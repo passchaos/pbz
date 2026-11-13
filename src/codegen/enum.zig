@@ -158,3 +158,32 @@ pub fn enumFirstValueIndexForNumber(enumeration: *const schema.EnumDescriptor, n
     }
     return null;
 }
+
+pub fn writeEnumNameArray(file: *const schema.FileDescriptor, name: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("&.{");
+    if (file.findEnumDeep(name)) |enumeration| {
+        for (enumeration.values.items, 0..) |value, i| {
+            if (i != 0) try writer.writeAll(", ");
+            try cg.writeZigStringLiteral(value.name, writer);
+        }
+    }
+    try writer.writeAll("}");
+}
+
+pub fn writeEnumNumberArray(file: *const schema.FileDescriptor, name: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("&.{");
+    if (file.findEnumDeep(name)) |enumeration| {
+        for (enumeration.values.items, 0..) |value, i| {
+            if (i != 0) try writer.writeAll(", ");
+            try writer.print("{d}", .{value.number});
+        }
+    }
+    try writer.writeAll("}");
+}
+
+pub fn enumIsClosed(file: *const schema.FileDescriptor, name: []const u8) bool {
+    if (file.findEnumDeep(name)) |enumeration| {
+        return schema.FeatureSet.effective(enumeration.features, file.features).enum_type == .closed;
+    }
+    return file.features.enum_type == .closed;
+}

@@ -5,7 +5,8 @@ const registry_mod = @import("registry.zig");
 const wire = @import("wire.zig");
 const plugin_emit = @import("codegen/plugin.zig");
 const service_emit = @import("codegen/service.zig");
-const enum_emit = @import("codegen/enum.zig");
+pub const enum_emit = @import("codegen/enum.zig");
+const json_emit = @import("codegen/json_emit.zig");
 
 pub const Error = std.mem.Allocator.Error || std.Io.Writer.Error || plugin.Error || registry_mod.Error;
 
@@ -55,9 +56,9 @@ pub fn generateZigFileWithContext(ctx: CodegenContext) Error![]u8 {
         try writeGeneratedFileDescriptor(&active_ctx, &descriptor_file, &out.writer, 0);
     }
     try writePackagedFileDecls(&active_ctx, &out.writer, 0);
-    try writeFileRegistryHelper(&active_ctx, &out.writer);
-    try writeWktJsonHelpers(&active_ctx, &out.writer);
-    try writeAnyJsonHelpers(&active_ctx, &out.writer);
+    try json_emit.writeFileRegistryHelper(&active_ctx, &out.writer);
+    try json_emit.writeWktJsonHelpers(&active_ctx, &out.writer);
+    try json_emit.writeAnyJsonHelpers(&active_ctx, &out.writer);
     return try finalizeGeneratedZig(ctx.allocator, try out.toOwnedSlice());
 }
 
@@ -571,7 +572,7 @@ fn relativeModulePath(allocator: std.mem.Allocator, from_file: []const u8, to_mo
     return out.toOwnedSlice();
 }
 
-fn makeImportAlias(allocator: std.mem.Allocator, path: []const u8) Error![]u8 {
+pub fn makeImportAlias(allocator: std.mem.Allocator, path: []const u8) Error![]u8 {
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
 
@@ -671,7 +672,7 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writeValidateRequired(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
     if (ctx.emit_json) {
-        try writeJsonMethods(ctx, message, writer, depth + 1);
+        try json_emit.writeJsonMethods(ctx, message, writer, depth + 1);
         try writer.writeAll("\n");
     }
     if (ctx.emit_text) {
@@ -768,7 +769,7 @@ fn oneofHasTypedMessageWithContext(ctx: *const CodegenContext, message: *const s
     return false;
 }
 
-fn writeOneofDeinitCall(oneof_name: []const u8, writer: *std.Io.Writer) Error!void {
+pub fn writeOneofDeinitCall(oneof_name: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.writeAll("self.");
     try writeQuotedIdentWithPrefix(oneof_name, "_pbzDeinitOneof_", writer);
     try writer.writeAll("(allocator);");
@@ -1102,7 +1103,7 @@ fn writeTextParseMessageExtensions(ctx: *const CodegenContext, target: *const sc
     for (scope.messages.items) |*nested| try writeTextParseMessageExtensions(ctx, target, nested, writer, depth);
 }
 
-fn extensionAppliesToMessage(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
+pub fn extensionAppliesToMessage(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
     const extendee = field.extendee orelse return false;
     if (findExtensionExtendeeInFile(file, field)) |resolved| return resolved == message;
     const trimmed = if (std.mem.startsWith(u8, extendee, ".")) extendee[1..] else extendee;
@@ -1634,13 +1635,13 @@ fn writeExtensionTextBlockCondition(file: *const schema.FileDescriptor, field: *
     }
 }
 
-fn extensionHasLeafAlias(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) bool {
+pub fn extensionHasLeafAlias(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) bool {
     const full_name = schema.extensionFullName(field);
     if (file.package.len != 0) return true;
     return std.mem.indexOfScalar(u8, full_name, '.') != null or std.mem.startsWith(u8, full_name, ".");
 }
 
-fn writeExtensionTextNameLiteral(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, qualified: bool, writer: *std.Io.Writer) Error!void {
+pub fn writeExtensionTextNameLiteral(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, qualified: bool, writer: *std.Io.Writer) Error!void {
     try writer.writeByte('"');
     try writer.writeByte('[');
     const full_name = schema.extensionFullName(field);
@@ -1666,7 +1667,7 @@ fn leafTypeName(name: []const u8) []const u8 {
     return if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| trimmed[idx + 1 ..] else trimmed;
 }
 
-fn writeExtensionHelperReference(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+pub fn writeExtensionHelperReference(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
     try writer.writeAll("extensions.");
     try writeExtensionHelperIdent(field, writer);
 }
@@ -1696,11 +1697,11 @@ fn writeTextParseValueExpr(file: *const schema.FileDescriptor, field: ?*const sc
         },
         .enumeration => |name| {
             try writer.print("try @This().textEnum({s}, ", .{value_expr});
-            try writeEnumNameArray(file, name, writer);
+            try enum_emit.writeEnumNameArray(file, name, writer);
             try writer.writeAll(", ");
-            try writeEnumNumberArray(file, name, writer);
+            try enum_emit.writeEnumNumberArray(file, name, writer);
             try writer.writeAll(", ");
-            try writer.writeAll(if (enumIsClosed(file, name)) "true" else "false");
+            try writer.writeAll(if (enum_emit.enumIsClosed(file, name)) "true" else "false");
             try writer.writeAll(")");
         },
         else => try writer.writeAll("@compileError(\"unsupported TextFormat parse field kind\")"),
@@ -1709,11 +1710,11 @@ fn writeTextParseValueExpr(file: *const schema.FileDescriptor, field: ?*const sc
 
 fn writeTextParseEnumExpr(file: *const schema.FileDescriptor, enum_name: []const u8, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.print("@This().textEnum({s}, ", .{value_expr});
-    try writeEnumNameArray(file, enum_name, writer);
+    try enum_emit.writeEnumNameArray(file, enum_name, writer);
     try writer.writeAll(", ");
-    try writeEnumNumberArray(file, enum_name, writer);
+    try enum_emit.writeEnumNumberArray(file, enum_name, writer);
     try writer.writeAll(", ");
-    try writer.writeAll(if (enumIsClosed(file, enum_name)) "true" else "false");
+    try writer.writeAll(if (enum_emit.enumIsClosed(file, enum_name)) "true" else "false");
     try writer.writeAll(")");
 }
 
@@ -1789,17 +1790,17 @@ fn writeOneofValueEncodeAssumeCapacity(ctx: *const CodegenContext, field: *const
     }
 }
 
-fn typedSingularMessageFieldWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) ?[]const u8 {
+pub fn typedSingularMessageFieldWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) ?[]const u8 {
     if (field.oneof_name != null or field.cardinality == .repeated) return null;
     return typedLengthPrefixedOrGroupFieldWithContext(ctx, field);
 }
 
-fn typedRepeatedMessageFieldWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) ?[]const u8 {
+pub fn typedRepeatedMessageFieldWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) ?[]const u8 {
     if (field.oneof_name != null or field.cardinality != .repeated) return null;
     return typedLengthPrefixedOrGroupFieldWithContext(ctx, field);
 }
 
-fn typedOneofMessageFieldWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) ?[]const u8 {
+pub fn typedOneofMessageFieldWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) ?[]const u8 {
     if (field.oneof_name == null) return null;
     return typedLengthPrefixedOrGroupFieldWithContext(ctx, field);
 }
@@ -1818,7 +1819,7 @@ fn typedLengthPrefixedOrGroupFieldWithContext(ctx: *const CodegenContext, field:
     return type_name;
 }
 
-fn typedMapMessageValueWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) ?[]const u8 {
+pub fn typedMapMessageValueWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) ?[]const u8 {
     const map_type = switch (field.kind) {
         .map => |map| map,
         else => return null,
@@ -5541,7 +5542,7 @@ fn oneofHasMessageField(message: *const schema.MessageDescriptor, oneof_name: []
     return false;
 }
 
-fn codegenCanReferenceMessage(file: *const schema.FileDescriptor, type_name: []const u8) bool {
+pub fn codegenCanReferenceMessage(file: *const schema.FileDescriptor, type_name: []const u8) bool {
     return resolveSameFileMessageReference(file, type_name) != null;
 }
 
@@ -5628,7 +5629,7 @@ pub fn writeMessageTypeReferenceWithContext(ctx: *const CodegenContext, type_nam
 /// as `extensions`, where a nested type's leaf name is not in scope.
 /// Reference a message from file scope (outside the package structs), where
 /// same-file leaf names are not in scope.
-fn writeFileScopeMessageReference(ctx: *const CodegenContext, type_name: []const u8, writer: *std.Io.Writer) Error!void {
+pub fn writeFileScopeMessageReference(ctx: *const CodegenContext, type_name: []const u8, writer: *std.Io.Writer) Error!void {
     const reference = resolveMessageReference(ctx, type_name) orelse {
         return try writeMessageTypeReference(type_name, writer);
     };
@@ -5921,7 +5922,7 @@ fn messageCanFastRawTagDecode(file: *const schema.FileDescriptor, message: *cons
                 .string, .bytes => has_length_delimited_scalar = true,
                 else => {},
             },
-            .enumeration => |name| if (enumIsClosed(file, name)) return false,
+            .enumeration => |name| if (enum_emit.enumIsClosed(file, name)) return false,
             .message, .group, .map => return false,
         }
     }
@@ -6067,7 +6068,7 @@ fn writeRawTagDecodePackedEnumCase(file: *const schema.FileDescriptor, field: *c
     try writer.print("{d} => {{\n", .{rawTagValue(field.number, .length_delimited)});
     try indent(writer, depth + 1);
     try writer.writeAll("const payload = try r.readBytes();\n");
-    if (field.kind == .enumeration and !enumIsClosed(file, field.kind.enumeration)) {
+    if (field.kind == .enumeration and !enum_emit.enumIsClosed(file, field.kind.enumeration)) {
         try indent(writer, depth + 1);
         try writer.writeAll("try pbz.wire.appendPackedInt32(allocator, &");
         try writeQuotedIdentWithSuffix(field.name, "_list", writer);
@@ -6104,14 +6105,14 @@ fn messageCanDecodeKnownReuse(file: *const schema.FileDescriptor, message: *cons
             has_repeated = true;
             switch (field.kind) {
                 .scalar => |scalar| if (knownReuseRepeatedScalarSupported(scalar) == false) return false,
-                .enumeration => |name| if (enumIsClosed(file, name)) return false,
+                .enumeration => |name| if (enum_emit.enumIsClosed(file, name)) return false,
                 else => return false,
             }
             continue;
         }
         switch (field.kind) {
             .scalar => {},
-            .enumeration => |name| if (enumIsClosed(file, name)) return false,
+            .enumeration => |name| if (enum_emit.enumIsClosed(file, name)) return false,
             .message, .group, .map => return false,
         }
     }
@@ -6732,7 +6733,7 @@ fn writeMapAssign(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, 
     try writer.writeAll(".putAssumeCapacityNoClobber(entry.key, entry.value);\n");
 }
 
-fn writeRepeatedElementType(field: schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+pub fn writeRepeatedElementType(field: schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
     switch (field.kind) {
         .scalar => |scalar| try writer.writeAll(scalarZigType(scalar)),
         .enumeration => try writer.writeAll("i32"),
@@ -6790,9 +6791,9 @@ fn writeDecodeEnumField(file: *const schema.FileDescriptor, field: *const schema
         try writeDecodePackedEnumField(file, field, writer, depth);
     } else if (field.oneof_name != null) {
         try writeOneofEnumDecodeAssign(file, field, writer);
-    } else if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) {
+    } else if (field.kind == .enumeration and enum_emit.enumIsClosed(file, field.kind.enumeration)) {
         try writer.writeAll("{ const value = try r.readInt32(); if (!@This().enumKnown(value, ");
-        try writeEnumNumberArray(file, field.kind.enumeration, writer);
+        try enum_emit.writeEnumNumberArray(file, field.kind.enumeration, writer);
         try writer.writeAll(")) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else { self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(" = value;");
@@ -6946,7 +6947,7 @@ fn writeDecodePackedEnumField(file: *const schema.FileDescriptor, field: *const 
     try writer.writeAll("if (tag.wire_type == .length_delimited) {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("const payload = try r.readBytes();\n");
-    if (field.kind == .enumeration and !enumIsClosed(file, field.kind.enumeration)) {
+    if (field.kind == .enumeration and !enum_emit.enumIsClosed(file, field.kind.enumeration)) {
         try indent(writer, depth + 2);
         try writer.writeAll("try pbz.wire.appendPackedInt32(allocator, &");
         try writeQuotedIdentWithSuffix(field.name, "_list", writer);
@@ -6957,7 +6958,7 @@ fn writeDecodePackedEnumField(file: *const schema.FileDescriptor, field: *const 
         try indent(writer, depth + 2);
         try writer.writeAll("while (!packed_reader.eof()) { const value_start = packed_reader.position(); const value = try packed_reader.readInt32(); const value_end = packed_reader.position();");
         try writer.writeAll(" if (!@This().enumKnown(value, ");
-        try writeEnumNumberArray(file, field.kind.enumeration, writer);
+        try enum_emit.writeEnumNumberArray(file, field.kind.enumeration, writer);
         try writer.writeAll(")) { try pbz.wire.appendRawVarintPayload(allocator, &_unknown_fields_list, ");
         try writer.print("{d}", .{field.number});
         try writer.writeAll(", payload[value_start..value_end]); continue; }");
@@ -6969,9 +6970,9 @@ fn writeDecodePackedEnumField(file: *const schema.FileDescriptor, field: *const 
     try writer.writeAll("} else {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("{ const value = try r.readInt32();");
-    if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) {
+    if (field.kind == .enumeration and enum_emit.enumIsClosed(file, field.kind.enumeration)) {
         try writer.writeAll(" if (!@This().enumKnown(value, ");
-        try writeEnumNumberArray(file, field.kind.enumeration, writer);
+        try enum_emit.writeEnumNumberArray(file, field.kind.enumeration, writer);
         try writer.writeAll(")) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else { try ");
         try writeQuotedIdentWithSuffix(field.name, "_list", writer);
         try writer.writeAll(".append(allocator, value); } }\n");
@@ -7038,7 +7039,7 @@ fn writeDecodeMapField(ctx: *const CodegenContext, field: *const schema.FieldDes
 }
 
 fn wireMapEntryCanSkip(file: *const schema.FileDescriptor, map_type: schema.MapType) bool {
-    return map_type.value.* == .enumeration and enumIsClosed(file, map_type.value.enumeration);
+    return map_type.value.* == .enumeration and enum_emit.enumIsClosed(file, map_type.value.enumeration);
 }
 
 fn writeMapEntryDecodeAssign(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, target: []const u8, number: u29, kind: schema.FieldKind, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -7062,14 +7063,14 @@ fn writeMapEntryDecodeAssign(ctx: *const CodegenContext, field: *const schema.Fi
         try indent(writer, depth + 2);
         try writer.writeAll(target);
         try writer.writeAll(" = value;\n");
-    } else if (kind == .enumeration and enumIsClosed(file, kind.enumeration)) {
+    } else if (kind == .enumeration and enum_emit.enumIsClosed(file, kind.enumeration)) {
         try indent(writer, depth + 2);
         try writer.writeAll("const value = ");
         try writeEntryReadExpr(kind, "entry_reader", writer);
         try writer.writeAll(";\n");
         try indent(writer, depth + 2);
         try writer.writeAll("if (!@This().enumKnown(value, ");
-        try writeEnumNumberArray(file, kind.enumeration, writer);
+        try enum_emit.writeEnumNumberArray(file, kind.enumeration, writer);
         try writer.writeAll(")) {\n");
         try indent(writer, depth + 3);
         try writer.writeAll("skip_entry = true;\n");
@@ -7170,9 +7171,9 @@ fn writeOneofMessageDecodeAssign(ctx: *const CodegenContext, field: *const schem
 fn writeOneofEnumDecodeAssign(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
     const oneof_name = field.oneof_name orelse return;
     try writer.writeAll("{ const value = try r.readInt32();");
-    if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) {
+    if (field.kind == .enumeration and enum_emit.enumIsClosed(file, field.kind.enumeration)) {
         try writer.writeAll(" if (!@This().enumKnown(value, ");
-        try writeEnumNumberArray(file, field.kind.enumeration, writer);
+        try enum_emit.writeEnumNumberArray(file, field.kind.enumeration, writer);
         try writer.writeAll(")) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else {");
     } else {
         try writeEnumClosedCheck(file, field, "value", writer);
@@ -7184,7 +7185,7 @@ fn writeOneofEnumDecodeAssign(file: *const schema.FileDescriptor, field: *const 
     try writer.writeAll(" = .{ .");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(" = value };");
-    if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) try writer.writeAll(" }");
+    if (field.kind == .enumeration and enum_emit.enumIsClosed(file, field.kind.enumeration)) try writer.writeAll(" }");
     try writer.writeAll(" },\n");
 }
 
@@ -7197,7 +7198,7 @@ fn writeEnumClosedCheck(file: *const schema.FileDescriptor, field: *const schema
 }
 
 fn writeEnumClosedCheckByName(file: *const schema.FileDescriptor, enum_name: []const u8, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    if (!enumIsClosed(file, enum_name)) return;
+    if (!enum_emit.enumIsClosed(file, enum_name)) return;
     try writer.writeAll(" if (");
     if (file.findEnumDeep(enum_name)) |enumeration| {
         for (enumeration.values.items, 0..) |value, i| {
@@ -8267,7 +8268,7 @@ fn writeScalarSkipCondition(receiver: []const u8, field_name: []const u8, scalar
     }
 }
 
-fn writeScalarSkipConditionWithOptions(receiver: []const u8, field_name: []const u8, scalar: schema.ScalarType, writer: *std.Io.Writer) Error!void {
+pub fn writeScalarSkipConditionWithOptions(receiver: []const u8, field_name: []const u8, scalar: schema.ScalarType, writer: *std.Io.Writer) Error!void {
     switch (scalar) {
         .string, .bytes => {
             try writer.writeAll("if (");
@@ -8419,7 +8420,7 @@ fn scalarZigType(scalar: schema.ScalarType) []const u8 {
     };
 }
 
-fn writeFieldDefault(file: *const schema.FileDescriptor, field: schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+pub fn writeFieldDefault(file: *const schema.FileDescriptor, field: schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
     if (field.kind == .map) return writer.writeAll(".empty");
     if (field.cardinality == .repeated) return writer.writeAll("&.{}");
     try writeFieldKindDefault(file, field.kind, field.default_value, writer);
@@ -8585,13 +8586,13 @@ pub fn writeZigStringLiteral(value: []const u8, writer: *std.Io.Writer) Error!vo
     try writer.writeByte('"');
 }
 
-fn writeZigLowerCamelStringLiteral(value: []const u8, writer: *std.Io.Writer) Error!void {
+pub fn writeZigLowerCamelStringLiteral(value: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.writeByte('"');
     try writeLowerCamelEscaped(value, writer);
     try writer.writeByte('"');
 }
 
-fn writeJsonFieldNameLiteralContents(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+pub fn writeJsonFieldNameLiteralContents(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
     if (field.json_name) |json_name| {
         try writeEscapedStringContents(json_name, writer);
     } else {
@@ -8612,7 +8613,7 @@ fn writeLowerCamelEscaped(value: []const u8, writer: *std.Io.Writer) Error!void 
     }
 }
 
-fn writeEscapedStringContents(value: []const u8, writer: *std.Io.Writer) Error!void {
+pub fn writeEscapedStringContents(value: []const u8, writer: *std.Io.Writer) Error!void {
     for (value) |c| try writeEscapedStringChar(c, writer);
 }
 
@@ -9163,7 +9164,7 @@ fn writeTextExtensionBlockPrefix(file: *const schema.FileDescriptor, field: *con
     try writer.writeAll("] {\\n\");\n");
 }
 
-fn writeExtensionTextNameContents(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, qualified: bool, writer: *std.Io.Writer) Error!void {
+pub fn writeExtensionTextNameContents(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, qualified: bool, writer: *std.Io.Writer) Error!void {
     const full_name = schema.extensionFullName(field);
     if (qualified) {
         if (std.mem.startsWith(u8, full_name, ".")) {
@@ -9197,9 +9198,9 @@ fn writeTextScalarValue(scalar: schema.ScalarType, value_expr: []const u8, write
 fn writeTextEnumValue(file: *const schema.FileDescriptor, enum_name: []const u8, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.print("try @This().textWriteEnum(writer, {s}", .{value_expr});
     try writer.writeAll(", ");
-    try writeEnumNameArray(file, enum_name, writer);
+    try enum_emit.writeEnumNameArray(file, enum_name, writer);
     try writer.writeAll(", ");
-    try writeEnumNumberArray(file, enum_name, writer);
+    try enum_emit.writeEnumNumberArray(file, enum_name, writer);
     try writer.writeAll(", options.enum_as_name");
     try writer.writeAll(")");
 }
@@ -9218,2569 +9219,6 @@ fn writeTextMapValue(ctx: *const CodegenContext, kind: schema.FieldKind, value_e
         } else try writer.writeAll("@compileError(\"unsupported map text value\")"),
         else => try writer.writeAll("@compileError(\"unsupported map text value\")"),
     }
-}
-
-fn writeJsonMethods(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    try indent(writer, depth);
-    try writer.writeAll("pub const JsonStringifyOptions = struct { enum_as_name: bool = true, preserve_proto_field_names: bool = false, always_print_primitive_fields: bool = false };\n\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn jsonStringifyAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return try self.jsonStringifyAllocWithOptions(allocator, .{});\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn jsonStringifyAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: @This().JsonStringifyOptions) ![]u8 {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var out: std.Io.Writer.Allocating = .init(allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("errdefer out.deinit();\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try self.jsonStringifyWithOptions(allocator, &out.writer, options);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return try out.toOwnedSlice();\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try self.jsonStringifyWithOptions(std.heap.page_allocator, writer, .{});\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn jsonStringifyWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try self.jsonStringifyWithOptions(allocator, writer, .{});\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().JsonStringifyOptions) anyerror!void {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("_ = &allocator;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("_ = &options;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try writer.writeAll(\"{\");\n");
-    if (messageJsonStringifyHasFields(ctx, message)) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("var first = true;\n");
-        for (message.fields.items) |*field| {
-            if (field.oneof_name == null) try writeJsonField(ctx, field, writer, depth + 1);
-        }
-        for (message.oneofs.items) |oneof| {
-            if (oneofHasJsonField(ctx, message, oneof.name)) try writeJsonOneof(ctx, message, oneof, writer, depth + 1);
-        }
-        try writeJsonExtensionFields(ctx, message, writer, depth + 1);
-    } else {
-        try indent(writer, depth + 1);
-        try writer.writeAll("_ = self;\n");
-    }
-    try indent(writer, depth + 1);
-    try writer.writeAll("try writer.writeAll(\"}\");\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-
-    try writer.writeAll("\n");
-    try writeJsonParseMethods(ctx, message, writer, depth);
-}
-
-fn messageContainsJsonField(message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
-    for (message.fields.items) |*candidate| {
-        if (candidate == field) return true;
-    }
-    for (message.messages.items) |*nested| {
-        if (messageContainsJsonField(nested, field)) return true;
-    }
-    return false;
-}
-
-fn findJsonFieldMessage(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?*const schema.MessageDescriptor {
-    for (file.messages.items) |*message| {
-        if (messageContainsJsonField(message, field)) return message;
-    }
-    return null;
-}
-
-/// Emit duplicate-field tracking for a JSON object key that matched `field`.
-/// Protobuf JSON rejects the same field spelled twice, including through
-/// different accepted spellings (`big_delta` and `bigDelta`), and rejects two
-/// different members of the same oneof.
-fn writeJsonSeenCheck(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const message = findJsonFieldMessage(file, field) orelse return;
-    var field_index: ?usize = null;
-    for (message.fields.items, 0..) |*candidate, i| {
-        if (candidate == field) {
-            field_index = i;
-            break;
-        }
-    }
-    const seen_index = field_index orelse return;
-    try indent(writer, depth);
-    try writer.print("if (_pbz_seen.isSet({d})) return error.DuplicateField;\n", .{seen_index});
-    try indent(writer, depth);
-    try writer.print("_pbz_seen.set({d});\n", .{seen_index});
-    if (field.oneof_name) |oneof_name| {
-        for (message.oneofs.items, 0..) |oneof, oneof_index| {
-            if (!std.mem.eql(u8, oneof.name, oneof_name)) continue;
-            try indent(writer, depth);
-            try writer.print("if (_pbz_seen_oneofs.isSet({d})) return error.DuplicateField;\n", .{oneof_index});
-            try indent(writer, depth);
-            try writer.print("_pbz_seen_oneofs.set({d});\n", .{oneof_index});
-            break;
-        }
-    }
-}
-
-const WktWrapperKind = struct {
-    pbz_type: []const u8,
-    value_type: []const u8,
-    parse: enum { float, int, bool, string, bytes },
-};
-
-const WktJson = union(enum) {
-    timestamp,
-    duration,
-    field_mask,
-    empty,
-    struct_value,
-    value_value,
-    list_value,
-    any_value,
-    wrapper: WktWrapperKind,
-};
-
-fn wktJsonSupportAvailable(ctx: *const CodegenContext) bool {
-    return codegenCanReferenceMessageWithContext(ctx, "google.protobuf.Struct") and
-        codegenCanReferenceMessageWithContext(ctx, "google.protobuf.Value") and
-        codegenCanReferenceMessageWithContext(ctx, "google.protobuf.ListValue");
-}
-
-fn anyJsonSupportAvailable(ctx: *const CodegenContext) bool {
-    return codegenCanReferenceMessageWithContext(ctx, "google.protobuf.Any");
-}
-
-fn wktJson(ctx: *const CodegenContext, type_name: []const u8) ?WktJson {
-    if (std.mem.eql(u8, type_name, "google.protobuf.Timestamp")) return .timestamp;
-    if (std.mem.eql(u8, type_name, "google.protobuf.Duration")) return .duration;
-    if (std.mem.eql(u8, type_name, "google.protobuf.FieldMask")) return .field_mask;
-    if (std.mem.eql(u8, type_name, "google.protobuf.Empty")) return .empty;
-    if (wktJsonSupportAvailable(ctx)) {
-        if (std.mem.eql(u8, type_name, "google.protobuf.Struct")) return .struct_value;
-        if (std.mem.eql(u8, type_name, "google.protobuf.Value")) return .value_value;
-        if (std.mem.eql(u8, type_name, "google.protobuf.ListValue")) return .list_value;
-    }
-    if (anyJsonSupportAvailable(ctx) and std.mem.eql(u8, type_name, "google.protobuf.Any")) return .any_value;
-    const wrappers = [_]struct { name: []const u8, kind: WktWrapperKind }{
-        .{ .name = "google.protobuf.DoubleValue", .kind = .{ .pbz_type = "pbz.DoubleValue", .value_type = "f64", .parse = .float } },
-        .{ .name = "google.protobuf.FloatValue", .kind = .{ .pbz_type = "pbz.FloatValue", .value_type = "f32", .parse = .float } },
-        .{ .name = "google.protobuf.Int64Value", .kind = .{ .pbz_type = "pbz.Int64Value", .value_type = "i64", .parse = .int } },
-        .{ .name = "google.protobuf.UInt64Value", .kind = .{ .pbz_type = "pbz.UInt64Value", .value_type = "u64", .parse = .int } },
-        .{ .name = "google.protobuf.Int32Value", .kind = .{ .pbz_type = "pbz.Int32Value", .value_type = "i32", .parse = .int } },
-        .{ .name = "google.protobuf.UInt32Value", .kind = .{ .pbz_type = "pbz.UInt32Value", .value_type = "u32", .parse = .int } },
-        .{ .name = "google.protobuf.BoolValue", .kind = .{ .pbz_type = "pbz.BoolValue", .value_type = "bool", .parse = .bool } },
-        .{ .name = "google.protobuf.StringValue", .kind = .{ .pbz_type = "pbz.StringValue", .value_type = "[]const u8", .parse = .string } },
-        .{ .name = "google.protobuf.BytesValue", .kind = .{ .pbz_type = "pbz.BytesValue", .value_type = "[]const u8", .parse = .bytes } },
-    };
-    inline for (wrappers) |wrapper| {
-        if (std.mem.eql(u8, type_name, wrapper.name)) return .{ .wrapper = wrapper.kind };
-    }
-    return null;
-}
-
-/// Parse a `pbz.json.Value` into the generated well-known-type struct. The
-/// hand-written WKT types own the canonical JSON validation and formatting.
-fn writeWktJsonParseExpr(kind: WktJson, value_expr: []const u8, arena_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    switch (kind) {
-        .timestamp => try writer.print("blk: {{ const _pbz_wkt = try pbz.Timestamp.jsonParseUnquoted(try @This().jsonString({s})); break :blk .{{ .seconds = _pbz_wkt.seconds, .nanos = _pbz_wkt.nanos }}; }}", .{value_expr}),
-        .duration => try writer.print("blk: {{ const _pbz_wkt = try pbz.Duration.jsonParseUnquoted(try @This().jsonString({s})); break :blk .{{ .seconds = _pbz_wkt.seconds, .nanos = _pbz_wkt.nanos }}; }}", .{value_expr}),
-        .field_mask => try writer.print("blk: {{ const _pbz_paths = try pbz.FieldMask.jsonParseUnquoted({s}, try @This().jsonString({s})); break :blk .{{ .paths = try allocator.dupe([]const u8, _pbz_paths) }}; }}", .{ arena_expr, value_expr }),
-        .empty => try writer.print("blk: {{ switch ({s}) {{ .object => |_pbz_obj| if (_pbz_obj.count() != 0) return error.UnknownField, else => return error.TypeMismatch }} break :blk .{{}}; }}", .{value_expr}),
-        .struct_value => try writer.print("try _pbzJsonParseWktStruct(allocator, {s}, {s})", .{ arena_expr, value_expr }),
-        .value_value => try writer.print("try _pbzJsonParseWktValue(allocator, {s}, {s})", .{ arena_expr, value_expr }),
-        .list_value => try writer.print("try _pbzJsonParseWktListValue(allocator, {s}, {s})", .{ arena_expr, value_expr }),
-        .any_value => try writer.print("try _pbzJsonParseWktAny(allocator, {s}, {s}, options.ignore_unknown_fields)", .{ arena_expr, value_expr }),
-        .wrapper => |wrapper| switch (wrapper.parse) {
-            .float => try writer.print(".{{ .value = try @This().jsonFloat({s}, {s}) }}", .{ wrapper.value_type, value_expr }),
-            .int => try writer.print(".{{ .value = try @This().jsonInt({s}, {s}) }}", .{ wrapper.value_type, value_expr }),
-            .bool => try writer.print(".{{ .value = try @This().jsonBool({s}) }}", .{value_expr}),
-            .string => try writer.print(".{{ .value = try @This().jsonString({s}) }}", .{value_expr}),
-            .bytes => try writer.print(".{{ .value = try @This().jsonBytes({s}, {s}) }}", .{ arena_expr, value_expr }),
-        },
-    }
-}
-
-fn writeWktJsonStringifyExpr(kind: WktJson, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    switch (kind) {
-        .timestamp => try writer.print("(pbz.Timestamp{{ .seconds = {s}.seconds, .nanos = {s}.nanos }}).jsonStringify(writer)", .{ value_expr, value_expr }),
-        .duration => try writer.print("(pbz.Duration{{ .seconds = {s}.seconds, .nanos = {s}.nanos }}).jsonStringify(writer)", .{ value_expr, value_expr }),
-        .field_mask => try writer.print("(pbz.FieldMask{{ .paths = {s}.paths }}).jsonStringify(writer)", .{value_expr}),
-        .empty => try writer.writeAll("pbz.Empty.jsonStringify(writer)"),
-        .struct_value => try writer.print("_pbzJsonStringifyWktStruct({s}, writer)", .{value_expr}),
-        .value_value => try writer.print("_pbzJsonStringifyWktValue({s}, writer)", .{value_expr}),
-        .list_value => try writer.print("_pbzJsonStringifyWktListValue({s}, writer)", .{value_expr}),
-        .any_value => try writer.print("_pbzJsonStringifyWktAny(allocator, {s}, writer)", .{value_expr}),
-        .wrapper => |wrapper| try writer.print("({s}{{ .value = {s}.value }}).jsonStringify(writer)", .{ wrapper.pbz_type, value_expr }),
-    }
-}
-
-/// Emit the recursive Struct/Value/ListValue JSON converters once per file.
-/// These are the three WKT types whose JSON form is arbitrary JSON rather than
-/// a fixed message shape; generated message JSON cannot express them inline.
-fn writeWktJsonHelpers(ctx: *const CodegenContext, writer: *std.Io.Writer) Error!void {
-    if (!wktJsonSupportAvailable(ctx)) return;
-    const struct_type = "google.protobuf.Struct";
-    const value_type = "google.protobuf.Value";
-    const list_type = "google.protobuf.ListValue";
-
-    try writer.writeAll("fn _pbzJsonParseWktStruct(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, value: pbz.json.Value) anyerror!");
-    try writeFileScopeMessageReference(ctx, struct_type, writer);
-    try writer.writeAll(" {\n    const object = switch (value) { .object => |object| object, else => return error.TypeMismatch };\n    var out = ");
-    try writeFileScopeMessageReference(ctx, struct_type, writer);
-    try writer.writeAll(".init();\n    errdefer out.deinit(allocator);\n    try out.fields.ensureTotalCapacity(allocator, object.count());\n    var it = object.iterator();\n    while (it.next()) |entry| {\n        var parsed = try _pbzJsonParseWktValue(allocator, arena_allocator, entry.value);\n        errdefer parsed.deinit(allocator);\n        try out.fields.put(allocator, entry.key, parsed);\n    }\n    return out;\n}\n\n");
-
-    try writer.writeAll("fn _pbzJsonParseWktValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, value: pbz.json.Value) anyerror!");
-    try writeFileScopeMessageReference(ctx, value_type, writer);
-    try writer.writeAll(" {\n    var out = ");
-    try writeFileScopeMessageReference(ctx, value_type, writer);
-    try writer.writeAll(".init();\n    errdefer out.deinit(allocator);\n    switch (value) {\n        .null => out.kind = .{ .null_value = 0 },\n        .bool => |v| out.kind = .{ .bool_value = v },\n        .integer => |v| out.kind = .{ .number_value = @floatFromInt(v) },\n        .float => |v| out.kind = .{ .number_value = v },\n        .number_string => |text| out.kind = .{ .number_value = try std.fmt.parseFloat(f64, text) },\n        .string => |text| out.kind = .{ .string_value = text },\n        .object => |object| {\n            var nested = ");
-    try writeFileScopeMessageReference(ctx, struct_type, writer);
-    try writer.writeAll(".init();\n            errdefer nested.deinit(allocator);\n            try nested.fields.ensureTotalCapacity(allocator, object.count());\n            var it = object.iterator();\n            while (it.next()) |entry| {\n                var parsed = try _pbzJsonParseWktValue(allocator, arena_allocator, entry.value);\n                errdefer parsed.deinit(allocator);\n                try nested.fields.put(allocator, entry.key, parsed);\n            }\n            out.kind = .{ .struct_value = nested };\n        },\n        .array => |array| {\n            const items = try allocator.alloc(");
-    try writeFileScopeMessageReference(ctx, value_type, writer);
-    try writer.writeAll(", array.items.len);\n            errdefer allocator.free(items);\n            var initialized: usize = 0;\n            errdefer for (items[0..initialized]) |*item| item.deinit(allocator);\n            for (array.items, 0..) |item, i| {\n                items[i] = try _pbzJsonParseWktValue(allocator, arena_allocator, item);\n                initialized += 1;\n            }\n            var list = ");
-    try writeFileScopeMessageReference(ctx, list_type, writer);
-    try writer.writeAll(".init();\n            list.values = items;\n            out.kind = .{ .list_value = list };\n        },\n    }\n    return out;\n}\n\n");
-
-    try writer.writeAll("fn _pbzJsonParseWktListValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, value: pbz.json.Value) anyerror!");
-    try writeFileScopeMessageReference(ctx, list_type, writer);
-    try writer.writeAll(" {\n    const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };\n    var out = ");
-    try writeFileScopeMessageReference(ctx, list_type, writer);
-    try writer.writeAll(".init();\n    errdefer out.deinit(allocator);\n    const items = try allocator.alloc(");
-    try writeFileScopeMessageReference(ctx, value_type, writer);
-    try writer.writeAll(", array.items.len);\n    errdefer allocator.free(items);\n    var initialized: usize = 0;\n    errdefer for (items[0..initialized]) |*item| item.deinit(allocator);\n    for (array.items, 0..) |item, i| {\n        items[i] = try _pbzJsonParseWktValue(allocator, arena_allocator, item);\n        initialized += 1;\n    }\n    out.values = items;\n    return out;\n}\n\n");
-
-    try writer.writeAll("fn _pbzJsonStringifyWktStruct(value: ");
-    try writeFileScopeMessageReference(ctx, struct_type, writer);
-    try writer.writeAll(", writer: *std.Io.Writer) anyerror!void {\n    try writer.writeAll(\"{\");\n    var it = value.fields.iterator();\n    var first = true;\n    while (it.next()) |entry| {\n        if (!first) try writer.writeAll(\",\");\n        first = false;\n        if (!pbz.validateUtf8(entry.key_ptr.*)) return error.InvalidUtf8;\n        try std.json.Stringify.value(entry.key_ptr.*, .{}, writer);\n        try writer.writeAll(\":\");\n        try _pbzJsonStringifyWktValue(entry.value_ptr.*, writer);\n    }\n    try writer.writeAll(\"}\");\n}\n\n");
-
-    try writer.writeAll("fn _pbzJsonStringifyWktValue(value: ");
-    try writeFileScopeMessageReference(ctx, value_type, writer);
-    try writer.writeAll(", writer: *std.Io.Writer) anyerror!void {\n    switch (value.kind) {\n        .none, .null_value => try writer.writeAll(\"null\"),\n        .number_value => |v| {\n            if (!std.math.isFinite(v)) return error.InvalidNumber;\n            try std.json.Stringify.value(v, .{}, writer);\n        },\n        .string_value => |v| {\n            if (!pbz.validateUtf8(v)) return error.InvalidUtf8;\n            try std.json.Stringify.value(v, .{}, writer);\n        },\n        .bool_value => |v| try writer.writeAll(if (v) \"true\" else \"false\"),\n        .struct_value => |v| try _pbzJsonStringifyWktStruct(v, writer),\n        .list_value => |v| try _pbzJsonStringifyWktListValue(v, writer),\n    }\n}\n\n");
-
-    try writer.writeAll("fn _pbzJsonStringifyWktListValue(value: ");
-    try writeFileScopeMessageReference(ctx, list_type, writer);
-    try writer.writeAll(", writer: *std.Io.Writer) anyerror!void {\n    try writer.writeAll(\"[\");\n    for (value.values, 0..) |item, i| {\n        if (i != 0) try writer.writeAll(\",\");\n        try _pbzJsonStringifyWktValue(item, writer);\n    }\n    try writer.writeAll(\"]\");\n}\n\n");
-
-}
-
-fn writeFileRegistryHelper(ctx: *const CodegenContext, writer: *std.Io.Writer) Error!void {
-    try writer.writeAll("fn _pbzFileRegistry(arena: std.mem.Allocator, registry_out: *pbz.Registry) !*pbz.schema.FileDescriptor {\n    registry_out.* = pbz.Registry.init(arena);\n    const file = try arena.create(pbz.schema.FileDescriptor);\n    file.* = try pbz_generated_file.decodeFileDescriptor(arena);\n    try registry_out.addFile(file);\n");
-    for (ctx.file.imports.items) |import| {
-        if (import.kind == .weak) continue;
-        const alias = try makeImportAlias(ctx.allocator, import.path);
-        defer ctx.allocator.free(alias);
-        try writer.writeAll("    {\n        const imported = try arena.create(pbz.schema.FileDescriptor);\n        imported.* = try imports.");
-        try writer.writeAll(alias);
-        try writer.writeAll(".decodeFileDescriptor(arena);\n        try registry_out.addFile(imported);\n    }\n");
-    }
-    try writer.writeAll("    return file;\n}\n\n");
-}
-
-fn writeAnyJsonHelpers(ctx: *const CodegenContext, writer: *std.Io.Writer) Error!void {
-    if (!anyJsonSupportAvailable(ctx)) return;
-    try writer.writeAll("fn _pbzJsonParseWktAny(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, value: pbz.json.Value, ignore_unknown_fields: bool) anyerror!");
-    try writeFileScopeMessageReference(ctx, "google.protobuf.Any", writer);
-    try writer.writeAll(" {\n    _ = arena_allocator;\n    var arena = std.heap.ArenaAllocator.init(allocator);\n    defer arena.deinit();\n    var registry: pbz.Registry = undefined;\n    const file = try _pbzFileRegistry(arena.allocator(), &registry);\n    defer registry.deinit();\n    const any_desc = registry.findMessage(\"google.protobuf.Any\", null) orelse return error.TypeMismatch;\n    const wire = try pbz.json.parseAnyWireAllocWithRegistry(allocator, file, &registry, any_desc, value, .{ .ignore_unknown_fields = ignore_unknown_fields });\n    defer allocator.free(wire);\n    return try ");
-    try writeFileScopeMessageReference(ctx, "google.protobuf.Any", writer);
-    try writer.writeAll(".decodeOwned(allocator, wire);\n}\n\n");
-    try writer.writeAll("fn _pbzJsonStringifyWktAny(allocator: std.mem.Allocator, value: ");
-    try writeFileScopeMessageReference(ctx, "google.protobuf.Any", writer);
-    try writer.writeAll(", writer: *std.Io.Writer) anyerror!void {\n    var arena = std.heap.ArenaAllocator.init(allocator);\n    defer arena.deinit();\n    var registry: pbz.Registry = undefined;\n    const file = try _pbzFileRegistry(arena.allocator(), &registry);\n    defer registry.deinit();\n    const any_desc = registry.findMessage(\"google.protobuf.Any\", null) orelse return error.TypeMismatch;\n    var dynamic = pbz.DynamicMessage.init(allocator, any_desc);\n    defer dynamic.deinit();\n    try dynamic.addClone(any_desc.findField(\"type_url\").?, .{ .string = @constCast(value.type_url) });\n    try dynamic.addClone(any_desc.findField(\"value\").?, .{ .bytes = @constCast(value.value) });\n    const json = try pbz.json.stringifyAnyAllocWithRegistry(allocator, file, &registry, &dynamic, .{});\n    defer allocator.free(json);\n    try writer.writeAll(json);\n}\n\n");
-}
-
-fn writeJsonSeenIndexCheck(index: usize, writer: *std.Io.Writer, depth: usize) Error!void {
-    try indent(writer, depth);
-    try writer.print("if (_pbz_seen.isSet({d})) return error.DuplicateField;\n", .{index});
-    try indent(writer, depth);
-    try writer.print("_pbz_seen.set({d});\n", .{index});
-}
-
-fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    try indent(writer, depth);
-    try writer.writeAll("pub const JsonParseOptions = struct { ignore_unknown_fields: bool = false };\n\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) !@This() {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return try @This().jsonParseWithOptions(allocator, text, .{});\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn jsonParseWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().JsonParseOptions) !@This() {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var arena = try allocator.create(std.heap.ArenaAllocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("errdefer allocator.destroy(arena);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("arena.* = std.heap.ArenaAllocator.init(allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("errdefer arena.deinit();\n");
-    // Keep one arena-owned copy of the input text so the lean JSON value tree
-    // can borrow string slices instead of allocating each key/value. Duplicate
-    // JSON object keys are rejected by the parser (protobuf conformance
-    // requires it); generated map parsing can then insert directly into the
-    // destination map.
-    try indent(writer, depth + 1);
-    try writer.writeAll("const owned_text = try arena.allocator().dupe(u8, text);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("const parsed = try pbz.json.parseValueTree(arena.allocator(), owned_text, .{});\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("self._json_arena = arena;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return self;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("/// Parse a pre-parsed JSON subtree without serializing it back to text first.\n");
-    try indent(writer, depth);
-    try writer.writeAll("/// The caller must keep `arena_allocator` alive for decoded bytes and keep\n");
-    try indent(writer, depth);
-    try writer.writeAll("/// the text backing `json_value` alive for borrowed string slices.\n");
-    try indent(writer, depth);
-    try writer.writeAll("pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: pbz.json.Value) !@This() {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("/// Option-bearing variant of jsonParseValue for generated nested-message parsers.\n");
-    try indent(writer, depth);
-    try writer.writeAll("pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: pbz.json.Value, options: @This().JsonParseOptions) anyerror!@This() {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var self = @This().init();\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("errdefer self.deinit(allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return self;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn jsonParseInitialized(allocator: std.mem.Allocator, text: []const u8) !@This() {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var self = try @This().jsonParse(allocator, text);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("errdefer self.deinit(allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try self.validateRequiredRecursive(allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return self;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn jsonParseInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().JsonParseOptions) !@This() {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var self = try @This().jsonParseWithOptions(allocator, text, options);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("errdefer self.deinit(allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try self.validateRequiredRecursive(allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return self;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: pbz.json.Value, options: @This().JsonParseOptions) !void {\n");
-    const has_parse_fields = messageJsonParseHasFields(ctx, message);
-    try indent(writer, depth + 1);
-    try writer.writeAll("_ = &self;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("_ = &allocator;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("_ = &arena_allocator;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };\n");
-    const seen_count = message.fields.items.len + messageJsonExtensionCount(ctx, message);
-    if (seen_count != 0) {
-        try indent(writer, depth + 1);
-        try writer.print("var _pbz_seen = std.StaticBitSet({d}).initEmpty();\n", .{seen_count});
-        try indent(writer, depth + 1);
-        try writer.writeAll("_ = &_pbz_seen;\n");
-    }
-    if (message.oneofs.items.len != 0) {
-        try indent(writer, depth + 1);
-        try writer.print("var _pbz_seen_oneofs = std.StaticBitSet({d}).initEmpty();\n", .{message.oneofs.items.len});
-        try indent(writer, depth + 1);
-        try writer.writeAll("_ = &_pbz_seen_oneofs;\n");
-    }
-    try indent(writer, depth + 1);
-    try writer.writeAll("var it = object.iterator();\n");
-    try indent(writer, depth + 1);
-    if (has_parse_fields) {
-        try writer.writeAll("while (it.next()) |entry| {\n");
-    } else {
-        try writer.writeAll("while (it.next()) |_| {\n");
-    }
-    if (has_parse_fields) {
-        try indent(writer, depth + 2);
-        try writer.writeAll("const key = entry.key;\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("const value = entry.value;\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("if (value == .null) {\n");
-        for (message.fields.items) |*field| {
-            if (field.oneof_name == null) try writeJsonClearField(ctx, field, writer, depth + 3);
-        }
-        for (message.oneofs.items) |oneof| {
-            for (message.fields.items) |*field| {
-                if (field.oneof_name) |name| {
-                    if (std.mem.eql(u8, name, oneof.name)) try writeJsonClearOneofField(ctx, oneof, field, writer, depth + 3);
-                }
-            }
-        }
-        try writeJsonClearExtensions(ctx, message, writer, depth + 3);
-        try indent(writer, depth + 3);
-        try writer.writeAll("if (options.ignore_unknown_fields) continue;\n");
-        try indent(writer, depth + 3);
-        try writer.writeAll("return error.UnknownField;\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("}\n");
-        for (message.fields.items) |*field| {
-            if (field.oneof_name == null) try writeJsonParseField(ctx, field, writer, depth + 2);
-        }
-        for (message.oneofs.items) |oneof| {
-            for (message.fields.items) |*field| {
-                if (field.oneof_name) |name| {
-                    if (std.mem.eql(u8, name, oneof.name)) try writeJsonParseOneofField(ctx, oneof, field, writer, depth + 2);
-                }
-            }
-        }
-        try writeJsonParseExtensions(ctx, message, writer, depth + 2);
-    }
-    try indent(writer, depth + 2);
-    try writer.writeAll("if (options.ignore_unknown_fields) continue;\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll("return error.UnknownField;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("}\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n\n");
-
-    try writeJsonParseHelpers(writer, depth);
-}
-
-fn messageJsonParseUsesAllocator(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
-    for (message.fields.items) |*field| {
-        if (fieldJsonParseUsesAllocator(ctx, field)) return true;
-    }
-    if (messageHasJsonExtensions(ctx, message)) return true;
-    return false;
-}
-
-fn messageJsonParseHasFields(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
-    for (message.fields.items) |field| {
-        if (field.kind == .scalar or field.kind == .enumeration or field.kind == .map or field.kind == .message or field.kind == .group) return true;
-    }
-    if (messageHasJsonExtensions(ctx, message)) return true;
-    return false;
-}
-
-fn messageJsonStringifyHasFields(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
-    for (message.fields.items) |field| {
-        if (field.oneof_name == null and fieldJsonStringifySupported(ctx, field)) return true;
-    }
-    for (message.oneofs.items) |oneof| {
-        if (oneofHasJsonField(ctx, message, oneof.name)) return true;
-    }
-    if (messageHasJsonExtensions(ctx, message)) return true;
-    return false;
-}
-
-fn messageJsonStringifyUsesAllocator(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
-    for (message.fields.items) |field| {
-        if (field.kind == .message or field.kind == .group) return true;
-        if (field.kind == .map and jsonMapStringifyValueUsesAllocator(ctx, field.kind.map.value.*)) return true;
-    }
-    if (messageHasJsonExtensions(ctx, message)) return true;
-    return false;
-}
-
-fn jsonMapStringifyValueUsesAllocator(ctx: *const CodegenContext, kind: schema.FieldKind) bool {
-    return switch (kind) {
-        .message, .group => |name| codegenCanReferenceMessageWithContext(ctx, name),
-        else => false,
-    };
-}
-
-fn messageJsonStringifyUsesOptions(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
-    for (message.fields.items) |field| {
-        if (field.oneof_name == null and fieldJsonStringifySupported(ctx, field)) return true;
-    }
-    for (message.oneofs.items) |oneof| {
-        if (oneofHasJsonField(ctx, message, oneof.name)) return true;
-    }
-    if (messageHasJsonOptionUsingExtensions(ctx, message)) return true;
-    return false;
-}
-
-fn fieldJsonStringifySupported(ctx: *const CodegenContext, field: schema.FieldDescriptor) bool {
-    return switch (field.kind) {
-        .scalar, .enumeration => true,
-        .message, .group => |name| codegenCanReferenceMessageWithContext(ctx, name),
-        .map => |map_type| jsonMapValueSupported(ctx, map_type.value.*),
-    };
-}
-
-fn oneofHasJsonField(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof_name: []const u8) bool {
-    for (message.fields.items) |field| {
-        if (field.oneof_name) |name| {
-            if (std.mem.eql(u8, name, oneof_name) and fieldJsonStringifySupported(ctx, field)) return true;
-        }
-    }
-    return false;
-}
-
-fn messageJsonParseUsesArenaAllocator(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
-    for (message.fields.items) |field| {
-        switch (field.kind) {
-            .scalar => |scalar| if (scalar == .bytes) return true,
-            .message, .group => return true,
-            .map => |map_type| switch (map_type.value.*) {
-                .scalar => |scalar| if (scalar == .bytes) return true,
-                .message, .group => return true,
-                else => {},
-            },
-            else => {},
-        }
-    }
-    if (messageHasJsonMessageExtension(ctx, message)) return true;
-    return false;
-}
-
-fn fieldJsonParseUsesAllocator(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) bool {
-    if (field.kind == .map) return true;
-    if (field.cardinality == .repeated) {
-        return field.kind == .scalar or field.kind == .enumeration or field.kind == .message or field.kind == .group;
-    }
-    if (field.kind == .scalar or field.kind == .enumeration) return false;
-    if (field.oneof_name != null) return typedOneofMessageFieldWithContext(ctx, field) != null;
-    return typedSingularMessageFieldWithContext(ctx, field) != null;
-}
-
-fn messageHasJsonExtensions(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
-    const file = ctx.file;
-    for (file.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, message, field) and jsonExtensionSupportedWithContext(ctx, field)) return true;
-    }
-    for (file.messages.items) |*scope| {
-        if (messageScopeHasJsonExtensions(ctx, message, scope)) return true;
-    }
-    return false;
-}
-
-fn messageScopeHasJsonExtensions(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor) bool {
-    const file = ctx.file;
-    for (scope.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, target, field) and jsonExtensionSupportedWithContext(ctx, field)) return true;
-    }
-    for (scope.messages.items) |*_pbz_nested| {
-        if (messageScopeHasJsonExtensions(ctx, target, _pbz_nested)) return true;
-    }
-    return false;
-}
-
-fn messageHasJsonOptionUsingExtensions(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
-    const file = ctx.file;
-    for (file.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, message, field) and jsonExtensionUsesOptions(ctx, field)) return true;
-    }
-    for (file.messages.items) |*scope| {
-        if (messageScopeHasJsonOptionUsingExtensions(ctx, message, scope)) return true;
-    }
-    return false;
-}
-
-fn messageScopeHasJsonOptionUsingExtensions(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor) bool {
-    const file = ctx.file;
-    for (scope.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, target, field) and jsonExtensionUsesOptions(ctx, field)) return true;
-    }
-    for (scope.messages.items) |*_pbz_nested| {
-        if (messageScopeHasJsonOptionUsingExtensions(ctx, target, _pbz_nested)) return true;
-    }
-    return false;
-}
-
-fn messageHasJsonMessageExtension(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
-    const file = ctx.file;
-    for (file.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, message, field) and jsonExtensionUsesArenaWithContext(ctx, field)) return true;
-    }
-    for (file.messages.items) |*scope| {
-        if (messageScopeHasJsonMessageExtension(ctx, message, scope)) return true;
-    }
-    return false;
-}
-
-fn messageScopeHasJsonMessageExtension(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor) bool {
-    const file = ctx.file;
-    for (scope.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, target, field) and jsonExtensionUsesArenaWithContext(ctx, field)) return true;
-    }
-    for (scope.messages.items) |*_pbz_nested| {
-        if (messageScopeHasJsonMessageExtension(ctx, target, _pbz_nested)) return true;
-    }
-    return false;
-}
-
-fn jsonExtensionSupported(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) bool {
-    return switch (field.kind) {
-        .scalar, .enumeration => true,
-        .message, .group => |name| codegenCanReferenceMessage(file, name),
-        else => false,
-    };
-}
-
-fn jsonExtensionSupportedWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) bool {
-    return switch (field.kind) {
-        .scalar, .enumeration => true,
-        .message, .group => |name| codegenCanReferenceMessageWithContext(ctx, name),
-        else => false,
-    };
-}
-
-fn jsonExtensionUsesOptions(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) bool {
-    return switch (field.kind) {
-        .enumeration => true,
-        .message, .group => |name| codegenCanReferenceMessageWithContext(ctx, name),
-        else => false,
-    };
-}
-
-fn jsonExtensionUsesArenaWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) bool {
-    return switch (field.kind) {
-        .scalar => |scalar| scalar == .bytes,
-        .message, .group => |name| codegenCanReferenceMessageWithContext(ctx, name),
-        else => false,
-    };
-}
-
-fn writeJsonClearField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
-    try indent(writer, depth);
-    try writer.writeAll("if (");
-    try writeJsonKeyCondition(field, writer);
-    try writer.writeAll(") {\n");
-    try writeJsonSeenCheck(file, field, writer, depth + 1);
-    if (field.cardinality != .repeated) {
-        const null_value_type = switch (field.kind) {
-            .message => |name| name,
-            else => null,
-        };
-        if (null_value_type) |name| {
-            if (std.mem.eql(u8, name, "google.protobuf.Value") and wktJsonSupportAvailable(ctx)) {
-                try indent(writer, depth + 1);
-                try writer.writeAll("self.");
-                try writeQuotedIdent(field.name, writer);
-                try writer.writeAll(" = try _pbzJsonParseWktValue(allocator, arena_allocator, value);\n");
-                try indent(writer, depth + 1);
-                try writer.writeAll("continue;\n");
-                try indent(writer, depth);
-                try writer.writeAll("}\n");
-                return;
-            }
-        }
-    }
-    if (field.kind == .map) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("@This().");
-        try writeQuotedIdentWithPrefix(field.name, "deinitMap_", writer);
-        try writer.writeAll("(allocator, &self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(");\n");
-    } else if (typedSingularMessageFieldWithContext(ctx, field)) |_| {
-        try indent(writer, depth + 1);
-        try writer.writeAll("if (self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(") |*old_value| old_value.deinit(allocator); self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = null;\n");
-    } else if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
-        try indent(writer, depth + 1);
-        try writer.writeAll("const old = self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll("; self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = &.{}; for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old);\n");
-    } else if (field.cardinality == .repeated) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("const old = self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll("; self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = &.{}; if (old.len != 0) allocator.free(old);\n");
-    } else {
-        try indent(writer, depth + 1);
-        try writer.writeAll("self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = ");
-        try writeFieldDefault(file, field.*, writer);
-        try writer.writeAll(";\n");
-        if (hasPresence(file, field.*)) {
-            try indent(writer, depth + 1);
-            try writer.writeAll("self.");
-            try writePresenceIdent(field.name, writer);
-            try writer.writeAll(" = false;\n");
-        }
-    }
-    try indent(writer, depth + 1);
-    try writer.writeAll("continue;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn writeJsonClearOneofField(ctx: *const CodegenContext, oneof: schema.OneofDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    try indent(writer, depth);
-    try writer.writeAll("if (");
-    try writeJsonKeyCondition(field, writer);
-    try writer.writeAll(") {\n");
-    const null_value_type = switch (field.kind) {
-        .message => |name| name,
-        else => null,
-    };
-    const null_enum_type = switch (field.kind) {
-        .enumeration => |name| name,
-        else => null,
-    };
-    if (null_value_type != null and std.mem.eql(u8, null_value_type.?, "google.protobuf.Value") and wktJsonSupportAvailable(ctx)) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("self.");
-        try writeQuotedIdent(oneof.name, writer);
-        try writer.writeAll(" = .{ .");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = try _pbzJsonParseWktValue(allocator, arena_allocator, value) };\n");
-    } else if (null_enum_type != null and std.mem.eql(u8, null_enum_type.?, "google.protobuf.NullValue")) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("self.");
-        try writeQuotedIdent(oneof.name, writer);
-        try writer.writeAll(" = .{ .");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = 0 };\n");
-    } else {
-        try indent(writer, depth + 1);
-    }
-    try writer.writeAll("continue;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn messageJsonExtensionCount(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) usize {
-    var count: usize = 0;
-    for (ctx.file.extensions.items) |*field| {
-        if (extensionAppliesToMessage(ctx.file, message, field) and jsonExtensionSupportedWithContext(ctx, field)) count += 1;
-    }
-    for (ctx.file.messages.items) |*scope| count += scopedJsonExtensionCount(ctx, message, scope);
-    return count;
-}
-
-fn scopedJsonExtensionCount(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor) usize {
-    var count: usize = 0;
-    for (scope.extensions.items) |*field| {
-        if (extensionAppliesToMessage(ctx.file, target, field) and jsonExtensionSupportedWithContext(ctx, field)) count += 1;
-    }
-    for (scope.messages.items) |*nested| count += scopedJsonExtensionCount(ctx, target, nested);
-    return count;
-}
-
-fn writeJsonClearExtensions(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    var seen_index = message.fields.items.len;
-    for (ctx.file.extensions.items) |*field| {
-        if (extensionAppliesToMessage(ctx.file, message, field) and jsonExtensionSupportedWithContext(ctx, field)) {
-            try writeJsonClearExtension(ctx.file, field, writer, depth, seen_index);
-            seen_index += 1;
-        }
-    }
-    for (ctx.file.messages.items) |*scope| try writeJsonClearScopedExtensions(ctx, message, scope, writer, depth, &seen_index);
-}
-
-fn writeJsonClearScopedExtensions(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize, seen_index: *usize) Error!void {
-    for (scope.extensions.items) |*field| {
-        if (extensionAppliesToMessage(ctx.file, target, field) and jsonExtensionSupportedWithContext(ctx, field)) {
-            try writeJsonClearExtension(ctx.file, field, writer, depth, seen_index.*);
-            seen_index.* += 1;
-        }
-    }
-    for (scope.messages.items) |*nested| try writeJsonClearScopedExtensions(ctx, target, nested, writer, depth, seen_index);
-}
-
-fn writeJsonClearExtension(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize, seen_index: usize) Error!void {
-    try indent(writer, depth);
-    try writer.writeAll("if (");
-    try writeExtensionJsonKeyCondition(file, field, writer);
-    try writer.writeAll(") {\n");
-    try writeJsonSeenIndexCheck(seen_index, writer, depth + 1);
-    try indent(writer, depth + 1);
-    try writer.writeAll("try self.clearUnknownFieldsByNumber(allocator, ");
-    try writeExtensionHelperReference(field, writer);
-    try writer.writeAll(".number); continue;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn writeJsonParseField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
-    switch (field.kind) {
-        .scalar, .enumeration => {},
-        .message, .group => |name| return try writeJsonParseMessageField(ctx, field, name, writer, depth),
-        .map => return try writeJsonParseMapField(ctx, field, writer, depth),
-    }
-    try indent(writer, depth);
-    try writer.writeAll("if (");
-    try writeJsonKeyCondition(field, writer);
-    try writer.writeAll(") {\n");
-    try writeJsonSeenCheck(file, field, writer, depth + 1);
-    if (field.cardinality == .repeated) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("var list: std.ArrayList(");
-        try writeRepeatedElementType(field.*, writer);
-        try writer.writeAll(") = .empty;\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("errdefer list.deinit(allocator);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("try list.ensureTotalCapacity(allocator, array.items.len);\n");
-        if (field.kind == .enumeration) {
-            try indent(writer, depth + 1);
-            try writer.writeAll("for (array.items) |item| {\n");
-            try indent(writer, depth + 2);
-            try writer.writeAll("const parsed_enum = ");
-            try writeJsonParseEnumExpr(file, field.kind.enumeration, "item", writer);
-            try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) continue; return err; };\n");
-            try indent(writer, depth + 2);
-            try writer.writeAll("try list.append(allocator, parsed_enum);\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("}\n");
-        } else {
-            try indent(writer, depth + 1);
-            try writer.writeAll("for (array.items) |item| try list.append(allocator, ");
-            try writeJsonParseValueExpr(file, field.kind, "item", "arena_allocator", writer);
-            try writer.writeAll(");\n");
-        }
-        try indent(writer, depth + 1);
-        try writer.writeAll("self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = blk: { const old = self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll("; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };\n");
-    } else {
-        try indent(writer, depth + 1);
-        try writer.writeAll("self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = ");
-        if (field.kind == .enumeration) {
-            try writeJsonParseEnumExpr(file, field.kind.enumeration, "value", writer);
-            try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) continue; return err; }");
-        } else {
-            try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
-        }
-        try writer.writeAll(";\n");
-        if (hasPresence(file, field.*)) {
-            try indent(writer, depth + 1);
-            try writer.writeAll("self.");
-            try writePresenceIdent(field.name, writer);
-            try writer.writeAll(" = true;\n");
-        }
-    }
-    try indent(writer, depth + 1);
-    try writer.writeAll("continue;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
-    if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return;
-    try indent(writer, depth);
-    try writer.writeAll("if (");
-    try writeJsonKeyCondition(field, writer);
-    try writer.writeAll(") {\n");
-    try writeJsonSeenCheck(file, field, writer, depth + 1);
-    if (wktJson(ctx, type_name)) |wkt_kind| {
-        if (field.cardinality == .repeated) {
-            try indent(writer, depth + 1);
-            try writer.writeAll("const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("var list: std.ArrayList(");
-            try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-            try writer.writeAll(") = .empty;\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("errdefer list.deinit(allocator);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("try list.ensureTotalCapacity(allocator, array.items.len);\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("for (array.items) |item| try list.append(allocator, ");
-            try writeWktJsonParseExpr(wkt_kind, "item", "arena_allocator", writer);
-            try writer.writeAll(");\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(" = blk: { const old = self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll("; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };\n");
-        } else {
-            try indent(writer, depth + 1);
-            try writer.writeAll("self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(" = ");
-            try writeWktJsonParseExpr(wkt_kind, "value", "arena_allocator", writer);
-            try writer.writeAll(";\n");
-        }
-        try indent(writer, depth + 1);
-        try writer.writeAll("continue;\n");
-        try indent(writer, depth);
-        try writer.writeAll("}\n");
-        return;
-    }
-    if (field.cardinality == .repeated) {
-        if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
-            try indent(writer, depth + 1);
-            try writer.writeAll("const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("var list: std.ArrayList(");
-            try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-            try writer.writeAll(") = .empty;\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("try list.ensureTotalCapacity(allocator, array.items.len);\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("for (array.items) |item| {\n");
-            try indent(writer, depth + 2);
-            try writer.writeAll("var _pbz_nested = try ");
-            try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-            try writer.writeAll(".jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
-            try indent(writer, depth + 2);
-            try writer.writeAll("errdefer _pbz_nested.deinit(allocator);\n");
-            try indent(writer, depth + 2);
-            try writer.writeAll("try list.append(allocator, _pbz_nested);\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("}\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("{ const old = self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll("; self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(" = try list.toOwnedSlice(allocator); for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old); }\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("continue;\n");
-            try indent(writer, depth);
-            try writer.writeAll("}\n");
-            return;
-        }
-        try indent(writer, depth + 1);
-        try writer.writeAll("const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("var list: std.ArrayList([]const u8) = .empty;\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("errdefer list.deinit(allocator);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("try list.ensureTotalCapacity(allocator, array.items.len);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("for (array.items) |item| {\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("var _pbz_nested = try ");
-        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-        try writer.writeAll(".jsonParseValueWithOptions(arena_allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("defer _pbz_nested.deinit(arena_allocator);\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("try list.append(allocator, try _pbz_nested.encode(arena_allocator));\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("}\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = blk: { const old = self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll("; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };\n");
-    } else {
-        if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
-            const oneof_name = field.oneof_name orelse return;
-            try indent(writer, depth + 1);
-            try writer.writeAll("var _pbz_nested = try ");
-            try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-            try writer.writeAll(".jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("errdefer _pbz_nested.deinit(allocator);\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("self.");
-            try writeQuotedIdent(oneof_name, writer);
-            try writer.writeAll(" = .{ .");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(" = _pbz_nested };\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("continue;\n");
-            try indent(writer, depth);
-            try writer.writeAll("}\n");
-            return;
-        }
-        if (typedSingularMessageFieldWithContext(ctx, field)) |_| {
-            try indent(writer, depth + 1);
-            try writer.writeAll("var _pbz_nested = try ");
-            try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-            try writer.writeAll(".jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("errdefer _pbz_nested.deinit(allocator);\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("if (self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(") |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(" = _pbz_nested; }\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("continue;\n");
-            try indent(writer, depth);
-            try writer.writeAll("}\n");
-            return;
-        }
-        try indent(writer, depth + 1);
-        try writer.writeAll("var _pbz_nested = try ");
-        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-        try writer.writeAll(".jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("defer _pbz_nested.deinit(arena_allocator);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = try _pbz_nested.encode(arena_allocator);\n");
-        if (hasPresence(file, field.*)) {
-            try indent(writer, depth + 1);
-            try writer.writeAll("self.");
-            try writePresenceIdent(field.name, writer);
-            try writer.writeAll(" = true;\n");
-        }
-    }
-    try indent(writer, depth + 1);
-    try writer.writeAll("continue;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn writeJsonParseExtensions(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
-    var seen_index = message.fields.items.len;
-    for (file.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, message, field) and jsonExtensionSupportedWithContext(ctx, field)) {
-            try writeJsonParseExtensionField(ctx, field, writer, depth, seen_index);
-            seen_index += 1;
-        }
-    }
-    for (file.messages.items) |*scope| try writeJsonParseScopedExtensions(ctx, message, scope, writer, depth, &seen_index);
-}
-
-fn writeJsonParseScopedExtensions(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize, seen_index: *usize) Error!void {
-    const file = ctx.file;
-    for (scope.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, target, field) and jsonExtensionSupportedWithContext(ctx, field)) {
-            try writeJsonParseExtensionField(ctx, field, writer, depth, seen_index.*);
-            seen_index.* += 1;
-        }
-    }
-    for (scope.messages.items) |*nested| try writeJsonParseScopedExtensions(ctx, target, nested, writer, depth, seen_index);
-}
-
-fn writeJsonParseExtensionField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize, seen_index: usize) Error!void {
-    const file = ctx.file;
-    switch (field.kind) {
-        .scalar, .enumeration => return try writeJsonParseScalarExtensionField(file, field, writer, depth, seen_index),
-        .message, .group => |type_name| return try writeJsonParseMessageExtensionField(ctx, field, type_name, writer, depth, seen_index),
-        else => return,
-    }
-}
-
-fn writeJsonParseScalarExtensionField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize, seen_index: usize) Error!void {
-    try indent(writer, depth);
-    try writer.writeAll("if (");
-    try writeExtensionJsonKeyCondition(file, field, writer);
-    try writer.writeAll(") {\n");
-    try writeJsonSeenIndexCheck(seen_index, writer, depth + 1);
-    if (field.cardinality == .repeated) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("try self.clearUnknownFieldsByNumber(allocator, ");
-        try writeExtensionHelperReference(field, writer);
-        try writer.writeAll(".number);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("for (array.items) |item| {\n");
-        try indent(writer, depth + 2);
-        if (field.kind == .enumeration) {
-            try writer.writeAll("const parsed_enum = ");
-            try writeJsonParseEnumExpr(file, field.kind.enumeration, "item", writer);
-            try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) continue; return err; };\n");
-            try indent(writer, depth + 2);
-            try writer.writeAll("try ");
-            try writeExtensionHelperReference(field, writer);
-            try writer.writeAll(".appendToUnknown(self, allocator, parsed_enum);\n");
-        } else {
-            try writer.writeAll("try ");
-            try writeExtensionHelperReference(field, writer);
-            try writer.writeAll(".appendToUnknown(self, allocator, ");
-            try writeJsonParseValueExpr(file, field.kind, "item", "arena_allocator", writer);
-            try writer.writeAll(");\n");
-        }
-        try indent(writer, depth + 1);
-        try writer.writeAll("}\n");
-    } else {
-        try indent(writer, depth + 1);
-        try writer.writeAll("try ");
-        try writeExtensionHelperReference(field, writer);
-        try writer.writeAll(".replaceInUnknown(self, allocator, ");
-        if (field.kind == .enumeration) {
-            try writeJsonParseEnumExpr(file, field.kind.enumeration, "value", writer);
-            try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) continue; return err; }");
-        } else {
-            try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
-        }
-        try writer.writeAll(");\n");
-    }
-    try indent(writer, depth + 1);
-    try writer.writeAll("continue;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn writeJsonParseMessageExtensionField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize, seen_index: usize) Error!void {
-    const file = ctx.file;
-    if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return;
-    try indent(writer, depth);
-    try writer.writeAll("if (");
-    try writeExtensionJsonKeyCondition(file, field, writer);
-    try writer.writeAll(") {\n");
-    try writeJsonSeenIndexCheck(seen_index, writer, depth + 1);
-    if (field.cardinality == .repeated) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("try self.clearUnknownFieldsByNumber(allocator, ");
-        try writeExtensionHelperReference(field, writer);
-        try writer.writeAll(".number);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("for (array.items) |item| {\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("var _pbz_nested = try ");
-        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-        try writer.writeAll(".jsonParseValueWithOptions(arena_allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("defer _pbz_nested.deinit(arena_allocator);\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("try ");
-        try writeExtensionHelperReference(field, writer);
-        try writer.writeAll(".appendToUnknown(self, allocator, try _pbz_nested.encode(arena_allocator));\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("}\n");
-    } else {
-        try indent(writer, depth + 1);
-        try writer.writeAll("var _pbz_nested = try ");
-        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-        try writer.writeAll(".jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("defer _pbz_nested.deinit(arena_allocator);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("try ");
-        try writeExtensionHelperReference(field, writer);
-        try writer.writeAll(".replaceInUnknown(self, allocator, try _pbz_nested.encode(arena_allocator));\n");
-    }
-    try indent(writer, depth + 1);
-    try writer.writeAll("continue;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn writeJsonParseMapField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
-    const map_type = switch (field.kind) {
-        .map => |map| map,
-        else => return,
-    };
-    if (!jsonMapValueSupported(ctx, map_type.value.*)) return;
-    try indent(writer, depth);
-    try writer.writeAll("if (");
-    try writeJsonKeyCondition(field, writer);
-    try writer.writeAll(") {\n");
-    try writeJsonSeenCheck(file, field, writer, depth + 1);
-    try indent(writer, depth + 1);
-    try writer.writeAll("const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("@This().");
-    try writeQuotedIdentWithPrefix(field.name, "deinitMap_", writer);
-    try writer.writeAll("(allocator, &self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(");\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(".ensureUnusedCapacity(allocator, object_value.count());\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var map_it = object_value.iterator();\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("while (map_it.next()) |map_entry| {\n");
-    try indent(writer, depth + 2);
-    if (map_type.value.* == .enumeration) {
-        try writer.writeAll("const parsed_value = ");
-        try writeJsonParseEnumExpr(file, map_type.value.enumeration, "map_entry.value", writer);
-        try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) continue; return err; };\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("try @This().");
-        try writeQuotedIdentWithPrefix(field.name, "putMapEntry_", writer);
-        try writer.writeAll("(allocator, &self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(", .{ .key = ");
-        try writeJsonParseMapKeyExpr(map_type.key, "map_entry.key", writer);
-        try writer.writeAll(", .value = parsed_value });\n");
-    } else if (typedMapMessageValueWithContext(ctx, field)) |type_name| {
-        try writer.writeAll("{\n");
-        try indent(writer, depth + 3);
-        try writer.writeAll("var parsed_value = try ");
-        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-        try writer.writeAll(".jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
-        try indent(writer, depth + 3);
-        try writer.writeAll("errdefer parsed_value.deinit(allocator);\n");
-        try indent(writer, depth + 3);
-        try writer.writeAll("try @This().");
-        try writeQuotedIdentWithPrefix(field.name, "putMapEntry_", writer);
-        try writer.writeAll("(allocator, &self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(", .{ .key = ");
-        try writeJsonParseMapKeyExpr(map_type.key, "map_entry.key", writer);
-        try writer.writeAll(", .value = parsed_value });\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("}\n");
-    } else {
-        try writer.writeAll("try @This().");
-        try writeQuotedIdentWithPrefix(field.name, "putMapEntry_", writer);
-        try writer.writeAll("(allocator, &self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(", .{ .key = ");
-        try writeJsonParseMapKeyExpr(map_type.key, "map_entry.key", writer);
-        try writer.writeAll(", .value = ");
-        try writeJsonParseMapValueExpr(ctx, field, map_type.value.*, "map_entry.value", "arena_allocator", writer);
-        try writer.writeAll(" });\n");
-    }
-    try indent(writer, depth + 1);
-    try writer.writeAll("}\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("continue;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn writeJsonParseMapKeyExpr(scalar: schema.ScalarType, key_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    switch (scalar) {
-        .string => try writer.writeAll(key_expr),
-        .bool => try writer.print("try @This().jsonMapKeyBool({s})", .{key_expr}),
-        .int32, .sint32, .sfixed32 => try writer.print("try std.fmt.parseInt(i32, {s}, 10)", .{key_expr}),
-        .int64, .sint64, .sfixed64 => try writer.print("try std.fmt.parseInt(i64, {s}, 10)", .{key_expr}),
-        .uint32, .fixed32 => try writer.print("try std.fmt.parseInt(u32, {s}, 10)", .{key_expr}),
-        .uint64, .fixed64 => try writer.print("try std.fmt.parseInt(u64, {s}, 10)", .{key_expr}),
-        .double, .float, .bytes => try writer.writeAll("@compileError(\"invalid map key\")"),
-    }
-}
-
-fn writeJsonParseOneofField(ctx: *const CodegenContext, oneof: schema.OneofDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
-    switch (field.kind) {
-        .scalar, .enumeration, .message, .group => {},
-        else => return,
-    }
-    try indent(writer, depth);
-    try writer.writeAll("if (");
-    try writeJsonKeyCondition(field, writer);
-    try writer.writeAll(") {\n");
-    try writeJsonSeenCheck(file, field, writer, depth + 1);
-    const maybe_message_type = switch (field.kind) {
-        .message, .group => |type_name| type_name,
-        else => null,
-    };
-    if (maybe_message_type) |type_name| {
-        if (wktJson(ctx, type_name)) |wkt_kind| {
-            try indent(writer, depth + 1);
-            try writer.writeAll("self.");
-            try writeQuotedIdent(oneof.name, writer);
-            try writer.writeAll(" = .{ .");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(" = ");
-            try writeWktJsonParseExpr(wkt_kind, "value", "arena_allocator", writer);
-            try writer.writeAll(" };\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("continue;\n");
-            try indent(writer, depth);
-            try writer.writeAll("}\n");
-            return;
-        }
-        try indent(writer, depth + 1);
-        if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
-            if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
-                try writer.writeAll("{ var _pbz_nested = try ");
-                try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-                try writer.writeAll(".jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer _pbz_nested.deinit(allocator); ");
-                try writeOneofDeinitCall(oneof.name, writer);
-                try writer.writeAll(" self.");
-                try writeQuotedIdent(oneof.name, writer);
-                try writer.writeAll(" = .{ .");
-                try writeQuotedIdent(field.name, writer);
-                try writer.writeAll(" = _pbz_nested }; }\n");
-                try indent(writer, depth + 1);
-                try writer.writeAll("continue;\n");
-                try indent(writer, depth);
-                try writer.writeAll("}\n");
-                return;
-            } else {
-                try writer.writeAll("{ var _pbz_nested = try ");
-                try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-                try writer.writeAll(".jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); defer _pbz_nested.deinit(arena_allocator); const payload = try _pbz_nested.encode(arena_allocator); ");
-                try writeOneofDeinitCall(oneof.name, writer);
-                try writer.writeAll(" self.");
-                try writeQuotedIdent(oneof.name, writer);
-                try writer.writeAll(" = .{ .");
-                try writeQuotedIdent(field.name, writer);
-                try writer.writeAll(" = payload }; }\n");
-                try indent(writer, depth + 1);
-                try writer.writeAll("continue;\n");
-                try indent(writer, depth);
-                try writer.writeAll("}\n");
-                return;
-            }
-        } else {
-            try writeOneofDeinitCall(oneof.name, writer);
-            try writer.writeAll(" self.");
-            try writeQuotedIdent(oneof.name, writer);
-            try writer.writeAll(" = .{ .");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(" = ");
-            try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
-        }
-    } else if (field.kind == .enumeration) {
-        try indent(writer, depth + 1);
-        try writeOneofDeinitCall(oneof.name, writer);
-        try writer.writeAll(" self.");
-        try writeQuotedIdent(oneof.name, writer);
-        try writer.writeAll(" = .{ .");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = ");
-        try writeJsonParseEnumExpr(file, field.kind.enumeration, "value", writer);
-        try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) continue; return err; }");
-    } else {
-        try indent(writer, depth + 1);
-        try writeOneofDeinitCall(oneof.name, writer);
-        try writer.writeAll(" self.");
-        try writeQuotedIdent(oneof.name, writer);
-        try writer.writeAll(" = .{ .");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = ");
-        try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
-    }
-    try writer.writeAll(" };\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("continue;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn writeJsonKeyCondition(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
-    try writer.writeAll("std.mem.eql(u8, key, ");
-    try writeZigStringLiteral(field.name, writer);
-    try writer.writeAll(")");
-    if (field.json_name) |json_name| {
-        if (!std.mem.eql(u8, json_name, field.name)) {
-            try writer.writeAll(" or std.mem.eql(u8, key, ");
-            try writeZigStringLiteral(json_name, writer);
-            try writer.writeAll(")");
-        }
-    } else if (std.mem.indexOfScalar(u8, field.name, '_') != null) {
-        try writer.writeAll(" or std.mem.eql(u8, key, ");
-        try writeZigLowerCamelStringLiteral(field.name, writer);
-        try writer.writeAll(")");
-    }
-}
-
-fn writeExtensionJsonKeyCondition(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
-    try writer.writeAll("std.mem.eql(u8, key, ");
-    try writeExtensionTextNameLiteral(file, field, true, writer);
-    try writer.writeAll(")");
-    if (extensionHasLeafAlias(file, field)) {
-        try writer.writeAll(" or std.mem.eql(u8, key, ");
-        try writeExtensionTextNameLiteral(file, field, false, writer);
-        try writer.writeAll(")");
-    }
-}
-
-fn writeJsonParseValueExpr(file: *const schema.FileDescriptor, kind: schema.FieldKind, value_expr: []const u8, arena_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    switch (kind) {
-        .scalar => |scalar| switch (scalar) {
-            .double => try writer.print("try @This().jsonFloat(f64, {s})", .{value_expr}),
-            .float => try writer.print("try @This().jsonFloat(f32, {s})", .{value_expr}),
-            .int32, .sint32, .sfixed32 => try writer.print("try @This().jsonInt(i32, {s})", .{value_expr}),
-            .int64, .sint64, .sfixed64 => try writer.print("try @This().jsonInt(i64, {s})", .{value_expr}),
-            .uint32, .fixed32 => try writer.print("try @This().jsonInt(u32, {s})", .{value_expr}),
-            .uint64, .fixed64 => try writer.print("try @This().jsonInt(u64, {s})", .{value_expr}),
-            .bool => try writer.print("try @This().jsonBool({s})", .{value_expr}),
-            .string => try writer.print("try @This().jsonString({s})", .{value_expr}),
-            .bytes => try writer.print("try @This().jsonBytes({s}, {s})", .{ arena_expr, value_expr }),
-        },
-        .enumeration => |name| {
-            try writer.print("try @This().jsonEnum({s}, ", .{value_expr});
-            try writeEnumNameArray(file, name, writer);
-            try writer.writeAll(", ");
-            try writeEnumNumberArray(file, name, writer);
-            try writer.writeAll(", ");
-            try writer.writeAll(if (enumIsClosed(file, name)) "true" else "false");
-            try writer.writeAll(")");
-        },
-        else => try writer.writeAll("@compileError(\"unsupported JSON parse field kind\")"),
-    }
-}
-
-fn writeJsonParseEnumExpr(file: *const schema.FileDescriptor, enum_name: []const u8, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    try writer.print("@This().jsonEnum({s}, ", .{value_expr});
-    try writeEnumNameArray(file, enum_name, writer);
-    try writer.writeAll(", ");
-    try writeEnumNumberArray(file, enum_name, writer);
-    try writer.writeAll(", ");
-    try writer.writeAll(if (enumIsClosed(file, enum_name)) "true" else "false");
-    try writer.writeAll(")");
-}
-
-fn writeJsonParseMapValueExpr(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, kind: schema.FieldKind, value_expr: []const u8, arena_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    const file = ctx.file;
-    switch (kind) {
-        .message => |name| if (codegenCanReferenceMessageWithContext(ctx, name)) {
-            if (wktJson(ctx, name)) |wkt_kind| {
-                try writeWktJsonParseExpr(wkt_kind, value_expr, arena_expr, writer);
-                return;
-            }
-            if (typedMapMessageValueWithContext(ctx, field)) |_| {
-                try writer.writeAll("blk: { var _pbz_nested = try ");
-                try writeMessageTypeReferenceWithContext(ctx, name, writer);
-                try writer.writeAll(".jsonParseValueWithOptions(allocator, ");
-                try writer.writeAll(arena_expr);
-                try writer.writeAll(", ");
-                try writer.writeAll(value_expr);
-                try writer.writeAll(", .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer _pbz_nested.deinit(allocator");
-                try writer.writeAll("); break :blk nested; }");
-            } else {
-                try writer.writeAll("blk: { var _pbz_nested = try ");
-                try writeMessageTypeReferenceWithContext(ctx, name, writer);
-                try writer.writeAll(".jsonParseValueWithOptions(");
-                try writer.writeAll(arena_expr);
-                try writer.writeAll(", ");
-                try writer.writeAll(arena_expr);
-                try writer.writeAll(", ");
-                try writer.writeAll(value_expr);
-                try writer.writeAll(", .{ .ignore_unknown_fields = options.ignore_unknown_fields }); defer _pbz_nested.deinit(");
-                try writer.writeAll(arena_expr);
-                try writer.writeAll("); break :blk try _pbz_nested.encode(");
-                try writer.writeAll(arena_expr);
-                try writer.writeAll("); }");
-            }
-        } else try writer.writeAll("@compileError(\"unsupported JSON parse field kind\")"),
-        else => try writeJsonParseValueExpr(file, kind, value_expr, arena_expr, writer),
-    }
-}
-
-pub fn writeEnumNameArray(file: *const schema.FileDescriptor, name: []const u8, writer: *std.Io.Writer) Error!void {
-    try writer.writeAll("&.{");
-    if (file.findEnumDeep(name)) |enumeration| {
-        for (enumeration.values.items, 0..) |value, i| {
-            if (i != 0) try writer.writeAll(", ");
-            try writeZigStringLiteral(value.name, writer);
-        }
-    }
-    try writer.writeAll("}");
-}
-
-pub fn writeEnumNumberArray(file: *const schema.FileDescriptor, name: []const u8, writer: *std.Io.Writer) Error!void {
-    try writer.writeAll("&.{");
-    if (file.findEnumDeep(name)) |enumeration| {
-        for (enumeration.values.items, 0..) |value, i| {
-            if (i != 0) try writer.writeAll(", ");
-            try writer.print("{d}", .{value.number});
-        }
-    }
-    try writer.writeAll("}");
-}
-
-pub fn enumIsClosed(file: *const schema.FileDescriptor, name: []const u8) bool {
-    if (file.findEnumDeep(name)) |enumeration| {
-        return schema.FeatureSet.effective(enumeration.features, file.features).enum_type == .closed;
-    }
-    return file.features.enum_type == .closed;
-}
-
-fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
-    try indent(writer, depth);
-    try writer.writeAll(
-        \\fn jsonInt(comptime T: type, value: pbz.json.Value) !T {
-        \\    return try pbz.json.intValue(T, value);
-        \\}
-        \\
-        \\fn jsonFloat(comptime T: type, value: pbz.json.Value) !T {
-        \\    return switch (value) {
-        \\        .integer => |v| @as(T, @floatFromInt(v)),
-        \\        .float => |v| blk: {
-        \\            const out: T = @floatCast(v);
-        \\            if (!std.math.isFinite(out)) return error.InvalidNumber;
-        \\            break :blk out;
-        \\        },
-        \\        .number_string => |text| blk: {
-        \\            const out = std.fmt.parseFloat(T, text) catch return error.InvalidNumber;
-        \\            if (!std.math.isFinite(out)) return error.InvalidNumber;
-        \\            break :blk out;
-        \\        },
-        \\        .string => |text| if (std.mem.eql(u8, text, "NaN"))
-        \\            std.math.nan(T)
-        \\        else if (std.mem.eql(u8, text, "Infinity"))
-        \\            std.math.inf(T)
-        \\        else if (std.mem.eql(u8, text, "-Infinity"))
-        \\            -std.math.inf(T)
-        \\        else blk: {
-        \\            const out = std.fmt.parseFloat(T, text) catch return error.InvalidNumber;
-        \\            if (!std.math.isFinite(out)) return error.InvalidNumber;
-        \\            break :blk out;
-        \\        },
-        \\        else => error.TypeMismatch,
-        \\    };
-        \\}
-        \\
-        \\fn jsonBool(value: pbz.json.Value) !bool {
-        \\    return switch (value) {
-        \\        .bool => |v| v,
-        \\        else => error.TypeMismatch,
-        \\    };
-        \\}
-        \\
-        \\fn jsonString(value: pbz.json.Value) ![]const u8 {
-        \\    return switch (value) {
-        \\        .string => |v| v,
-        \\        else => error.TypeMismatch,
-        \\    };
-        \\}
-        \\
-        \\fn jsonBytes(allocator: std.mem.Allocator, value: pbz.json.Value) ![]const u8 {
-        \\    return try @This().jsonDecodeBase64(allocator, try @This().jsonString(value));
-        \\}
-        \\
-        \\fn jsonEnum(value: pbz.json.Value, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32 {
-        \\    return switch (value) {
-        \\        .integer => |v| try @This().jsonEnumNumber(std.math.cast(i32, v) orelse return error.Overflow, numbers, closed),
-        \\        .number_string => |text| try @This().jsonEnumNumber(try std.fmt.parseInt(i32, text, 10), numbers, closed),
-        \\        .string => |text| {
-        \\            inline for (names, 0..) |name, i| {
-        \\                if (std.mem.eql(u8, text, name)) return numbers[i];
-        \\            }
-        \\            return try @This().jsonEnumNumber(std.fmt.parseInt(i32, text, 10) catch return error.InvalidEnumValue, numbers, closed);
-        \\        },
-        \\        else => error.TypeMismatch,
-        \\    };
-        \\}
-        \\
-        \\fn jsonEnumNumber(value: i32, comptime numbers: []const i32, comptime closed: bool) !i32 {
-        \\    if (closed) {
-        \\        inline for (numbers) |number| {
-        \\            if (value == number) return value;
-        \\        }
-        \\        return error.InvalidEnumValue;
-        \\    }
-        \\    return value;
-        \\}
-        \\
-        \\fn jsonWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32, enum_as_name: bool) !void {
-        \\    if (!enum_as_name) return try writer.print("{d}", .{value});
-        \\    inline for (numbers, 0..) |number, i| {
-        \\        if (value == number) return try std.json.Stringify.value(names[i], .{}, writer);
-        \\    }
-        \\    try writer.print("{d}", .{value});
-        \\}
-        \\
-        \\fn textWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32, enum_as_name: bool) !void {
-        \\    if (!enum_as_name) return try writer.print("{d}", .{value});
-        \\    inline for (numbers, 0..) |number, i| {
-        \\        if (value == number) return try writer.writeAll(names[i]);
-        \\    }
-        \\    try writer.print("{d}", .{value});
-        \\}
-        \\
-        \\fn enumKnown(value: i32, comptime numbers: []const i32) bool {
-        \\    inline for (numbers) |number| {
-        \\        if (value == number) return true;
-        \\    }
-        \\    return false;
-        \\}
-        \\
-        \\fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8 {
-        \\    if (!std.mem.startsWith(u8, line, name)) return null;
-        \\    const rest = line[name.len..];
-        \\    if (rest.len != 0 and rest[0] == ':') {
-        \\        const value = rest[1..];
-        \\        if (value.len == 0) return value;
-        \\        if (value[0] == ' ') {
-        \\            const body = value[1..];
-        \\            if (body.len == 0 or (body[0] != ' ' and body[0] != '\t' and body[0] != '\r' and body[body.len - 1] != ' ' and body[body.len - 1] != '\t' and body[body.len - 1] != '\r')) return body;
-        \\        } else if (value[0] != '\t' and value[0] != '\r' and value[value.len - 1] != ' ' and value[value.len - 1] != '\t' and value[value.len - 1] != '\r') return value;
-        \\    }
-        \\    const trimmed = std.mem.trimStart(u8, rest, " \t");
-        \\    if (trimmed.len == 0 or trimmed[0] != ':') return null;
-        \\    return std.mem.trim(u8, trimmed[1..], " \t\r");
-        \\}
-        \\
-        \\fn textBlockField(line: []const u8, comptime name: []const u8) bool {
-        \\    if (!std.mem.startsWith(u8, line, name)) return false;
-        \\    const rest = line[name.len..];
-        \\    if (rest.len == 1 and (rest[0] == '{' or rest[0] == '<')) return true;
-        \\    if (rest.len == 2 and rest[0] == ' ' and (rest[1] == '{' or rest[1] == '<')) return true;
-        \\    var trimmed = std.mem.trimStart(u8, rest, " \t");
-        \\    if (trimmed.len != 0 and trimmed[0] == ':') {
-        \\        trimmed = std.mem.trimStart(u8, trimmed[1..], " \t");
-        \\    }
-        \\    return std.mem.eql(u8, trimmed, "{") or std.mem.eql(u8, trimmed, "<");
-        \\}
-        \\
-        \\fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
-        \\    var out: std.ArrayList(u8) = .empty;
-        \\    errdefer out.deinit(allocator);
-        \\    var quote: ?u8 = null;
-        \\    var escaped = false;
-        \\    var expect_field = true;
-        \\    for (text) |c| {
-        \\        if (escaped) {
-        \\            escaped = false;
-        \\            try out.append(allocator, c);
-        \\            continue;
-        \\        }
-        \\        if (quote) |q| {
-        \\            if (c == '\\') {
-        \\                escaped = true;
-        \\            } else if (c == q) {
-        \\                quote = null;
-        \\            }
-        \\            try out.append(allocator, c);
-        \\            continue;
-        \\        }
-        \\        if (c == '"' or c == '\'') {
-        \\            quote = c;
-        \\            expect_field = false;
-        \\            try out.append(allocator, c);
-        \\        } else if (c == ';' or c == ',') {
-        \\            if (expect_field) return error.InvalidCharacter;
-        \\            expect_field = true;
-        \\            try out.append(allocator, '\n');
-        \\        } else if (c == '{' or c == '<') {
-        \\            try out.append(allocator, c);
-        \\            try out.append(allocator, '\n');
-        \\            expect_field = true;
-        \\        } else if (c == '}' or c == '>') {
-        \\            try out.append(allocator, '\n');
-        \\            try out.append(allocator, c);
-        \\            try out.append(allocator, '\n');
-        \\            expect_field = false;
-        \\        } else {
-        \\            if (!std.ascii.isWhitespace(c)) expect_field = false;
-        \\            try out.append(allocator, c);
-        \\        }
-        \\    }
-        \\    return try out.toOwnedSlice(allocator);
-        \\}
-        \\
-        \\fn textNeedsSeparatorNormalization(text: []const u8) bool {
-        \\    var quote: ?u8 = null;
-        \\    var escaped = false;
-        \\    for (text, 0..) |c, index| {
-        \\        if (escaped) {
-        \\            escaped = false;
-        \\            continue;
-        \\        }
-        \\        if (quote) |q| {
-        \\            if (c == '\\') {
-        \\                escaped = true;
-        \\            } else if (c == q) {
-        \\                quote = null;
-        \\            }
-        \\            continue;
-        \\        }
-        \\        if (c == '"' or c == '\'') {
-        \\            quote = c;
-        \\        } else if (c == ';' or c == ',') {
-        \\            return true;
-        \\        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
-        \\            return true;
-        \\        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
-        \\            return true;
-        \\        }
-        \\    }
-        \\    return false;
-        \\}
-        \\
-        \\fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
-        \\    var i = index + 1;
-        \\    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
-        \\    return i >= text.len or text[i] == '\n';
-        \\}
-        \\
-        \\fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
-        \\    var i = index;
-        \\    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
-        \\    return i == 0 or text[i - 1] == '\n';
-        \\}
-        \\
-        \\fn textCleanLine(raw_line: []const u8, text_has_comments: bool) []const u8 {
-        \\    var end = raw_line.len;
-        \\    if (!text_has_comments) return @This().textTrimLine(raw_line);
-        \\    var quote: ?u8 = null;
-        \\    var escaped = false;
-        \\    for (raw_line, 0..) |c, i| {
-        \\        if (escaped) {
-        \\            escaped = false;
-        \\            continue;
-        \\        }
-        \\        if (quote) |q| {
-        \\            if (c == '\\') {
-        \\                escaped = true;
-        \\            } else if (c == q) {
-        \\                quote = null;
-        \\            }
-        \\            continue;
-        \\        }
-        \\        if (c == '"' or c == '\'') {
-        \\            quote = c;
-        \\        } else if (c == '#') {
-        \\            end = i;
-        \\            break;
-        \\        }
-        \\    }
-        \\    return @This().textTrimLine(raw_line[0..end]);
-        \\}
-        \\
-        \\fn textTrimLine(raw_line: []const u8) []const u8 {
-        \\    if (raw_line.len == 0) return raw_line;
-        \\    const first = raw_line[0];
-        \\    const last = raw_line[raw_line.len - 1];
-        \\    if (first != ' ' and first != '\t' and first != '\r' and last != ' ' and last != '\t' and last != '\r' and last != ';' and last != ',') return raw_line;
-        \\    var line = std.mem.trim(u8, raw_line, " \t\r");
-        \\    while (line.len != 0 and (line[line.len - 1] == ';' or line[line.len - 1] == ',')) {
-        \\        line = std.mem.trim(u8, line[0 .. line.len - 1], " \t\r");
-        \\    }
-        \\    return line;
-        \\}
-        \\
-        \\fn textBool(value: []const u8) !bool {
-        \\    if (std.mem.eql(u8, value, "true") or std.mem.eql(u8, value, "t") or std.mem.eql(u8, value, "1")) return true;
-        \\    if (std.mem.eql(u8, value, "false") or std.mem.eql(u8, value, "f") or std.mem.eql(u8, value, "0")) return false;
-        \\    return error.TypeMismatch;
-        \\}
-        \\
-        \\fn textInt(comptime T: type, value: []const u8) !T {
-        \\    return try std.fmt.parseInt(T, value, 0);
-        \\}
-        \\
-        \\fn textFloat(comptime T: type, value: []const u8) !T {
-        \\    var body = value;
-        \\    var negative = false;
-        \\    if (body.len != 0 and (body[0] == '-' or body[0] == '+')) {
-        \\        negative = body[0] == '-';
-        \\        body = body[1..];
-        \\    }
-        \\    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
-        \\    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
-        \\    if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
-        \\    if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
-        \\        const parsed = std.math.inf(T);
-        \\        return if (negative) -parsed else parsed;
-        \\    }
-        \\    return try std.fmt.parseFloat(T, value);
-        \\}
-        \\
-        \\fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
-        \\    var value = raw_value;
-        \\    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
-        \\        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
-        \\    }
-        \\    if (value.len >= 2) {
-        \\        const quote = value[0];
-        \\        if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
-        \\            const body = value[1 .. value.len - 1];
-        \\            const escaped_or_closed = if (quote == '"') std.mem.indexOfAny(u8, body, "\\\"") else std.mem.indexOfAny(u8, body, "\\'");
-        \\            if (escaped_or_closed == null) return try allocator.dupe(u8, body);
-        \\        }
-        \\    }
-        \\    var out: std.ArrayList(u8) = .empty;
-        \\    errdefer out.deinit(allocator);
-        \\    var i: usize = 0;
-        \\    var read_quoted = false;
-        \\    while (true) {
-        \\        while (i < value.len and std.ascii.isWhitespace(value[i])) : (i += 1) {}
-        \\        if (i >= value.len) break;
-        \\        const quote = value[i];
-        \\        if (quote != '"' and quote != '\'') {
-        \\            if (read_quoted) return error.InvalidEscape;
-        \\            try out.appendSlice(allocator, value[i..]);
-        \\            break;
-        \\        }
-        \\        read_quoted = true;
-        \\        i += 1;
-        \\        var closed = false;
-        \\        while (i < value.len) {
-        \\            const c = value[i];
-        \\            i += 1;
-        \\            if (c == quote) {
-        \\                closed = true;
-        \\                break;
-        \\            }
-        \\            if (c != '\\') {
-        \\                try out.append(allocator, c);
-        \\                continue;
-        \\            }
-        \\            if (i >= value.len) return error.InvalidEscape;
-        \\            const esc = value[i];
-        \\            i += 1;
-        \\            switch (esc) {
-        \\                'n' => try out.append(allocator, '\n'),
-        \\                'r' => try out.append(allocator, '\r'),
-        \\                't' => try out.append(allocator, '\t'),
-        \\                'a' => try out.append(allocator, 0x07),
-        \\                'b' => try out.append(allocator, 0x08),
-        \\                'f' => try out.append(allocator, 0x0c),
-        \\                'v' => try out.append(allocator, 0x0b),
-        \\                '\\' => try out.append(allocator, '\\'),
-        \\                '"' => try out.append(allocator, '"'),
-        \\                '\'' => try out.append(allocator, '\''),
-        \\                '?' => try out.append(allocator, '?'),
-        \\                'x', 'X' => {
-        \\                    const start = i;
-        \\                    var end = i;
-        \\                    var decoded: u8 = 0;
-        \\                    while (end < value.len and end < start + 2) : (end += 1) {
-        \\                        const digit = @This().textHexDigit(value[end]) orelse break;
-        \\                        decoded = decoded * 16 + digit;
-        \\                    }
-        \\                    if (end == start) return error.InvalidEscape;
-        \\                    try out.append(allocator, decoded);
-        \\                    i = end;
-        \\                },
-        \\                'u', 'U' => {
-        \\                    const count: usize = if (esc == 'u') 4 else 8;
-        \\                    var codepoint: u32 = 0;
-        \\                    var digits: usize = 0;
-        \\                    while (digits < count) : (digits += 1) {
-        \\                        if (i >= value.len) return error.InvalidEscape;
-        \\                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
-        \\                        codepoint = codepoint * 16 + digit;
-        \\                        i += 1;
-        \\                    }
-        \\                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
-        \\                    var buf: [4]u8 = undefined;
-        \\                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
-        \\                    try out.appendSlice(allocator, buf[0..len]);
-        \\                },
-        \\                '0'...'7' => {
-        \\                    const start = i - 1;
-        \\                    var end = i;
-        \\                    var decoded: u16 = esc - '0';
-        \\                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
-        \\                        decoded = decoded * 8 + (value[end] - '0');
-        \\                    }
-        \\                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
-        \\                    try out.append(allocator, @intCast(decoded));
-        \\                    i = end;
-        \\                },
-        \\                else => |unknown| try out.append(allocator, unknown),
-        \\            }
-        \\        }
-        \\        if (!closed) return error.InvalidEscape;
-        \\    }
-        \\    return try out.toOwnedSlice(allocator);
-        \\}
-        \\
-        \\fn textHexDigit(c: u8) ?u8 {
-        \\    return switch (c) {
-        \\        '0'...'9' => c - '0',
-        \\        'a'...'f' => c - 'a' + 10,
-        \\        'A'...'F' => c - 'A' + 10,
-        \\        else => null,
-        \\    };
-        \\}
-        \\
-        \\fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32 {
-        \\    inline for (names, 0..) |name, i| {
-        \\        if (std.mem.eql(u8, value, name)) return numbers[i];
-        \\    }
-        \\    const number = try std.fmt.parseInt(i32, value, 10);
-        \\    if (closed) {
-        \\        inline for (numbers) |known| {
-        \\            if (number == known) return number;
-        \\        }
-        \\        return error.InvalidEnumValue;
-        \\    }
-        \\    return number;
-        \\}
-        \\
-        \\fn textUnknownField(allocator: std.mem.Allocator, line: []const u8) !?[]const u8 {
-        \\    var colon_index: ?usize = null;
-        \\    for (line, 0..) |c, i| {
-        \\        if (c == ':') { colon_index = i; break; }
-        \\        if (i == 0 and !std.ascii.isDigit(c)) return null;
-        \\        if (i != 0 and !std.ascii.isDigit(c)) return null;
-        \\    }
-        \\    const idx = colon_index orelse return null;
-        \\    const number = try std.fmt.parseInt(pbz.FieldNumber, std.mem.trim(u8, line[0..idx], " \t\r"), 10);
-        \\    const value = std.mem.trim(u8, line[idx + 1 ..], " \t\r");
-        \\    var raw = pbz.Writer.init(allocator);
-        \\    defer raw.deinit();
-        \\    if (value.len >= 2 and ((value[0] == '"' and value[value.len - 1] == '"') or (value[0] == '\'' and value[value.len - 1] == '\''))) {
-        \\        const bytes = try @This().textUnquote(allocator, value);
-        \\        defer allocator.free(bytes);
-        \\        try raw.writeBytes(number, bytes);
-        \\    } else {
-        \\        try raw.writeUInt64(number, try std.fmt.parseInt(u64, value, 0));
-        \\    }
-        \\    return try raw.toOwnedSlice();
-        \\}
-        \\
-        \\fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anytype, text_has_comments: bool) !?[]const u8 {
-        \\    var end: usize = 0;
-        \\    while (end < line.len and std.ascii.isDigit(line[end])) : (end += 1) {}
-        \\    if (end == 0) return null;
-        \\    const rest = std.mem.trim(u8, line[end..], " \t\r");
-        \\    if (!std.mem.eql(u8, rest, "{") and !std.mem.eql(u8, rest, "<")) return null;
-        \\    const number = try std.fmt.parseInt(pbz.FieldNumber, line[0..end], 10);
-        \\    var raw = pbz.Writer.init(allocator);
-        \\    defer raw.deinit();
-        \\    try raw.writeTag(number, .start_group);
-        \\    while (lines.next()) |raw_line| {
-        \\        const child = @This().textCleanLine(raw_line, text_has_comments);
-        \\        if (child.len == 0) continue;
-        \\        if (std.mem.eql(u8, child, "}") or std.mem.eql(u8, child, ">")) {
-        \\            try raw.writeTag(number, .end_group);
-        \\            return try raw.toOwnedSlice();
-        \\        }
-        \\        if (try @This().textUnknownField(allocator, child)) |field_raw| {
-        \\            defer allocator.free(field_raw);
-        \\            try raw.appendSlice(field_raw);
-        \\            continue;
-        \\        }
-        \\        if (try @This().textUnknownGroup(allocator, child, lines, text_has_comments)) |group_raw| {
-        \\            defer allocator.free(group_raw);
-        \\            try raw.appendSlice(group_raw);
-        \\            continue;
-        \\        }
-        \\        return error.UnknownField;
-        \\    }
-        \\    return error.UnexpectedEof;
-        \\}
-        \\
-        \\fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
-        \\    var r = pbz.Reader.init(raw);
-        \\    while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
-        \\}
-        \\
-        \\fn textLikelyUnknownMessage(bytes: []const u8) bool {
-        \\    if (bytes.len == 0) return false;
-        \\    var reader = pbz.Reader.init(bytes);
-        \\    while (true) {
-        \\        const tag = reader.nextTag() catch return false;
-        \\        const actual = tag orelse return reader.eof();
-        \\        reader.skipValue(actual) catch return false;
-        \\    }
-        \\}
-        \\
-        \\fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
-        \\    try writer.writeByte('"');
-        \\    for (bytes) |c| {
-        \\        if (c == '\\') try writer.writeAll("\\\\") else if (c == '"') try writer.writeAll("\\\"") else if (c == '\n') try writer.writeAll("\\n") else if (c == '\r') try writer.writeAll("\\r") else if (c == '\t') try writer.writeAll("\\t") else if (c >= 0x20 and c <= 0x7e) try writer.writeByte(c) else try writer.print("\\{o:0>3}", .{c});
-        \\    }
-        \\    try writer.writeByte('"');
-        \\}
-        \\
-        \\fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writer) !void {
-        \\    switch (tag.wire_type) {
-        \\        .varint => try writer.print("{d}: {d}\n", .{ tag.number, try r.readVarint() }),
-        \\        .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
-        \\        .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
-        \\        .length_delimited => {
-        \\            const bytes = try r.readBytes();
-        \\            if (@This().textLikelyUnknownMessage(bytes)) {
-        \\                try writer.print("{d} {{\n", .{tag.number});
-        \\                var _pbz_nested_reader = pbz.Reader.init(bytes);
-        \\                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
-        \\                try writer.writeAll("}\n");
-        \\            } else {
-        \\                try writer.print("{d}: ", .{tag.number});
-        \\                try @This().textWriteQuotedBytes(bytes, writer);
-        \\                try writer.writeByte('\n');
-        \\            }
-        \\        },
-        \\        .start_group => {
-        \\            try writer.print("{d} {{\n", .{tag.number});
-        \\            while (try r.nextTag()) |inner| {
-        \\                if (inner.wire_type == .end_group) {
-        \\                    if (inner.number != tag.number) return error.InvalidFieldNumber;
-        \\                    try writer.writeAll("}\n");
-        \\                    return;
-        \\                }
-        \\                try @This().textWriteUnknownField(inner, r, writer);
-        \\            }
-        \\            return error.TruncatedInput;
-        \\        },
-        \\        .end_group => return error.InvalidWireType,
-        \\    }
-        \\}
-        \\
-        \\fn textBlock(allocator: std.mem.Allocator, lines: anytype, text_has_comments: bool) ![]u8 {
-        \\    var out: std.Io.Writer.Allocating = .init(allocator);
-        \\    errdefer out.deinit();
-        \\    var depth: usize = 1;
-        \\    while (lines.next()) |raw_line| {
-        \\        const line = @This().textCleanLine(raw_line, text_has_comments);
-        \\        if (line.len == 0) continue;
-        \\        if (std.mem.eql(u8, line, "}") or std.mem.eql(u8, line, ">")) {
-        \\            depth -= 1;
-        \\            if (depth == 0) return try out.toOwnedSlice();
-        \\        }
-        \\        if (std.mem.endsWith(u8, line, "{") or std.mem.endsWith(u8, line, "<")) depth += 1;
-        \\        try out.writer.writeAll(line);
-        \\        try out.writer.writeByte('\n');
-        \\    }
-        \\    return error.UnexpectedEof;
-        \\}
-        \\
-        \\fn jsonDecodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
-        \\    return try pbz.json.decodeBase64(allocator, value);
-        \\}
-        \\
-        \\fn jsonMapKeyBool(key: []const u8) !bool {
-        \\    if (std.mem.eql(u8, key, "true")) return true;
-        \\    if (std.mem.eql(u8, key, "false")) return false;
-        \\    return error.TypeMismatch;
-        \\}
-        \\
-        \\fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
-        \\    if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
-        \\    try std.json.Stringify.value(value, .{}, writer);
-        \\}
-        \\
-    );
-}
-
-fn writeJsonField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
-    switch (field.kind) {
-        .scalar => |scalar| try writeJsonScalarField(file, field, scalar, writer, depth),
-        .enumeration => |name| try writeJsonEnumField(file, field, name, writer, depth),
-        .map => try writeJsonMapField(ctx, field, writer, depth),
-        .message, .group => |name| try writeJsonMessageField(ctx, field, name, writer, depth),
-    }
-}
-
-fn writeJsonPrefix(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    try indent(writer, depth);
-    if (jsonFieldNameMatchesProtoName(field)) {
-        try writer.writeAll("try writer.writeAll(if (first) \"\\\"");
-        try writeEscapedStringContents(field.name, writer);
-        try writer.writeAll("\\\":\" else \",\\\"");
-        try writeEscapedStringContents(field.name, writer);
-        try writer.writeAll("\\\":\"); first = false;\n");
-        return;
-    }
-    try writer.writeAll("try writer.writeAll(if (options.preserve_proto_field_names) (if (first) \"\\\"");
-    try writeEscapedStringContents(field.name, writer);
-    try writer.writeAll("\\\":\" else \",\\\"");
-    try writeEscapedStringContents(field.name, writer);
-    try writer.writeAll("\\\":\") else (if (first) \"\\\"");
-    try writeJsonFieldNameLiteralContents(field, writer);
-    try writer.writeAll("\\\":\" else \",\\\"");
-    try writeJsonFieldNameLiteralContents(field, writer);
-    try writer.writeAll("\\\":\")); first = false;\n");
-}
-
-fn jsonFieldNameMatchesProtoName(field: *const schema.FieldDescriptor) bool {
-    if (field.json_name) |json_name| return std.mem.eql(u8, json_name, field.name);
-    return std.mem.indexOfScalar(u8, field.name, '_') == null;
-}
-
-fn writeJsonScalarField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
-    if (field.cardinality == .repeated) {
-        try indent(writer, depth);
-        try writer.writeAll("if (self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(".len != 0 or options.always_print_primitive_fields) {\n");
-        try writeJsonPrefix(field, writer, depth + 1);
-        try indent(writer, depth + 1);
-        try writer.writeAll("try writer.writeAll(\"[\");\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("for (self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(", 0..) |item, i| { if (i != 0) try writer.writeAll(\",\"); ");
-        try writeJsonScalarValue(scalar, "item", writer);
-        try writer.writeAll("; }\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("try writer.writeAll(\"]\");\n");
-        try indent(writer, depth);
-        try writer.writeAll("}\n");
-    } else {
-        try indent(writer, depth);
-        if (hasPresence(file, field.*)) {
-            try writer.writeAll("if (self.");
-            try writePresenceIdent(field.name, writer);
-            if (isRequired(field.*)) {
-                try writer.writeAll(") {\n");
-            } else {
-                try writer.writeAll(" or options.always_print_primitive_fields) {\n");
-            }
-        } else {
-            try writeScalarSkipConditionWithOptions("self.", field.name, scalar, writer);
-            try writer.writeAll("{\n");
-        }
-        try writeJsonPrefix(field, writer, depth + 1);
-        try indent(writer, depth + 1);
-        try writer.writeAll("const value = self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(";\n");
-        try indent(writer, depth + 1);
-        try writeJsonScalarValue(scalar, "value", writer);
-        try writer.writeAll(";\n");
-        try indent(writer, depth);
-        try writer.writeAll("}\n");
-    }
-}
-
-fn writeJsonEnumField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, enum_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
-    if (field.cardinality == .repeated) {
-        try indent(writer, depth);
-        try writer.writeAll("if (self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(".len != 0 or options.always_print_primitive_fields) {\n");
-        try writeJsonPrefix(field, writer, depth + 1);
-        try indent(writer, depth + 1);
-        try writer.writeAll("try writer.writeAll(\"[\");\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("for (self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(", 0..) |item, i| { if (i != 0) try writer.writeAll(\",\"); ");
-        try writeJsonEnumValue(file, enum_name, "item", writer);
-        try writer.writeAll("; }\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("try writer.writeAll(\"]\");\n");
-        try indent(writer, depth);
-        try writer.writeAll("}\n");
-    } else {
-        try indent(writer, depth);
-        if (hasPresence(file, field.*)) {
-            try writer.writeAll("if (self.");
-            try writePresenceIdent(field.name, writer);
-            if (isRequired(field.*)) {
-                try writer.writeAll(") {\n");
-            } else {
-                try writer.writeAll(" or options.always_print_primitive_fields) {\n");
-            }
-        } else {
-            try writer.writeAll("if (self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(" != 0 or options.always_print_primitive_fields) {\n");
-        }
-        try writeJsonPrefix(field, writer, depth + 1);
-        try indent(writer, depth + 1);
-        try writer.writeAll("const value = self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(";\n");
-        try indent(writer, depth + 1);
-        try writeJsonEnumValue(file, enum_name, "value", writer);
-        try writer.writeAll(";\n");
-        try indent(writer, depth);
-        try writer.writeAll("}\n");
-    }
-}
-
-fn writeJsonMapField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const map_type = switch (field.kind) {
-        .map => |map| map,
-        else => return,
-    };
-    if (!jsonMapValueSupported(ctx, map_type.value.*)) return;
-    try indent(writer, depth);
-    try writer.writeAll("if (self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(".count() != 0 or options.always_print_primitive_fields) {\n");
-    try writeJsonPrefix(field, writer, depth + 1);
-    try indent(writer, depth + 1);
-    try writer.writeAll("try writer.writeAll(\"{\");\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var map_it = self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(".iterator();\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var i: usize = 0;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("while (map_it.next()) |map_entry| : (i += 1) {\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll("const entry = ");
-    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
-    try writer.writeAll("{ .key = map_entry.key_ptr.*, .value = map_entry.value_ptr.* };\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll("if (i != 0) try writer.writeAll(\",\");\n");
-    try indent(writer, depth + 2);
-    try writeJsonMapKeyValue(map_type.key, "entry.key", writer);
-    try writer.writeAll(";\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll("try writer.writeAll(\":\");\n");
-    try indent(writer, depth + 2);
-    try writeJsonMapEntryValue(ctx, field, map_type.value.*, "entry.value", writer);
-    try writer.writeAll(";\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("}\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try writer.writeAll(\"}\");\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn writeJsonMessageField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
-    if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return;
-    if (wktJson(ctx, type_name)) |wkt_kind| {
-        if (field.cardinality == .repeated) {
-            try indent(writer, depth);
-            try writer.writeAll("if (self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(".len != 0 or options.always_print_primitive_fields) {\n");
-            try writeJsonPrefix(field, writer, depth + 1);
-            try indent(writer, depth + 1);
-            try writer.writeAll("try writer.writeAll(\"[\");\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("for (self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(", 0..) |item, i| { if (i != 0) try writer.writeAll(\",\"); _ = &item; try ");
-            try writeWktJsonStringifyExpr(wkt_kind, "item", writer);
-            try writer.writeAll("; }\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("try writer.writeAll(\"]\");\n");
-            try indent(writer, depth);
-            try writer.writeAll("}\n");
-        } else {
-            try indent(writer, depth);
-            try writer.writeAll("if (self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(") |value| {\n");
-            try writeJsonPrefix(field, writer, depth + 1);
-            try indent(writer, depth + 1);
-            try writer.writeAll("_ = &value;\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("try ");
-            try writeWktJsonStringifyExpr(wkt_kind, "value", writer);
-            try writer.writeAll(";\n");
-            try indent(writer, depth);
-            try writer.writeAll("}\n");
-        }
-        return;
-    }
-    if (field.cardinality == .repeated) {
-        try indent(writer, depth);
-        try writer.writeAll("if (self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(".len != 0 or options.always_print_primitive_fields) {\n");
-        try writeJsonPrefix(field, writer, depth + 1);
-        try indent(writer, depth + 1);
-        try writer.writeAll("try writer.writeAll(\"[\");\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("for (self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(", 0..) |item, i| {\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("if (i != 0) try writer.writeAll(\",\");\n");
-        if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
-            try indent(writer, depth + 2);
-            try writer.writeAll("try item.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
-        } else {
-            try writeDecodeAndStringifyPayload(ctx, type_name, "item", writer, depth + 2);
-        }
-        try indent(writer, depth + 1);
-        try writer.writeAll("}\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("try writer.writeAll(\"]\");\n");
-        try indent(writer, depth);
-        try writer.writeAll("}\n");
-    } else {
-        try indent(writer, depth);
-        if (typedSingularMessageFieldWithContext(ctx, field)) |_| {
-            try writer.writeAll("if (self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(") |_pbz_nested| {\n");
-            try writeJsonPrefix(field, writer, depth + 1);
-            try indent(writer, depth + 1);
-            try writer.writeAll("try _pbz_nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
-            try indent(writer, depth);
-            try writer.writeAll("}\n");
-            return;
-        }
-        try writer.writeAll("if (self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(".len != 0");
-        if (hasPresence(ctx.file, field.*)) {
-            try writer.writeAll(" or self.");
-            try writePresenceIdent(field.name, writer);
-        }
-        try writer.writeAll(") {\n");
-        try writeJsonPrefix(field, writer, depth + 1);
-        try indent(writer, depth + 1);
-        try writer.writeAll("var _pbz_nested = try ");
-        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-        try writer.writeAll(".decode(allocator, self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(");\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("defer _pbz_nested.deinit(allocator);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("try _pbz_nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
-        try indent(writer, depth);
-        try writer.writeAll("}\n");
-    }
-}
-
-fn writeDecodeAndStringifyPayload(ctx: *const CodegenContext, type_name: []const u8, payload_expr: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
-    try indent(writer, depth);
-    try writer.writeAll("var _pbz_nested = try ");
-    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-    try writer.writeAll(".decode(allocator, ");
-    try writer.writeAll(payload_expr);
-    try writer.writeAll(");\n");
-    try indent(writer, depth);
-    try writer.writeAll("defer _pbz_nested.deinit(allocator);\n");
-    try indent(writer, depth);
-    try writer.writeAll("try _pbz_nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
-}
-
-fn jsonMapValueSupported(ctx: *const CodegenContext, kind: schema.FieldKind) bool {
-    return switch (kind) {
-        .scalar, .enumeration => true,
-        .message => |name| codegenCanReferenceMessageWithContext(ctx, name),
-        else => false,
-    };
-}
-
-fn writeJsonMapKeyValue(scalar: schema.ScalarType, key_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    switch (scalar) {
-        .string => try writer.print("try @This().jsonWriteString(writer, {s})", .{key_expr}),
-        .bool => try writer.print("try writer.writeAll(if ({s}) \"\\\"true\\\"\" else \"\\\"false\\\"\")", .{key_expr}),
-        .int32, .int64, .uint32, .uint64, .sint32, .sint64, .fixed32, .fixed64, .sfixed32, .sfixed64 => try writer.print("try writer.print(\"\\\"{{d}}\\\"\", .{{{s}}})", .{key_expr}),
-        .double, .float, .bytes => try writer.writeAll("@compileError(\"invalid map key\")"),
-    }
-}
-
-fn writeJsonMapEntryValue(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    const file = ctx.file;
-    switch (kind) {
-        .scalar => |scalar| try writeJsonScalarValue(scalar, value_expr, writer),
-        .enumeration => |name| try writeJsonEnumValue(file, name, value_expr, writer),
-        .message => |name| if (codegenCanReferenceMessageWithContext(ctx, name)) {
-            if (wktJson(ctx, name)) |wkt_kind| {
-                try writer.writeAll("try ");
-                try writeWktJsonStringifyExpr(wkt_kind, value_expr, writer);
-                return;
-            }
-            if (typedMapMessageValueWithContext(ctx, field)) |_| {
-                try writer.print("try {s}.jsonStringifyWithOptions(allocator, writer, .{{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields }})", .{value_expr});
-            } else {
-                try writer.writeAll("var _pbz_nested = try ");
-                try writeMessageTypeReferenceWithContext(ctx, name, writer);
-                try writer.writeAll(".decode(allocator, ");
-                try writer.writeAll(value_expr);
-                try writer.writeAll("); defer _pbz_nested.deinit(allocator); try _pbz_nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields })");
-            }
-        } else try writer.writeAll("@compileError(\"unsupported map JSON value\")"),
-        else => try writer.writeAll("@compileError(\"unsupported map JSON value\")"),
-    }
-}
-
-fn writeJsonOneof(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
-    try indent(writer, depth);
-    try writer.writeAll("switch (self.");
-    try writeQuotedIdent(oneof.name, writer);
-    try writer.writeAll(") {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll(".none => {},\n");
-    for (message.fields.items) |*field| {
-        if (field.oneof_name) |name| {
-            if (std.mem.eql(u8, name, oneof.name)) {
-                try indent(writer, depth + 1);
-                try writer.writeAll(".");
-                try writeQuotedIdent(field.name, writer);
-                try writer.writeAll(" => |value| {\n");
-                switch (field.kind) {
-                    .scalar => |scalar| {
-                        try writeJsonPrefix(field, writer, depth + 2);
-                        try indent(writer, depth + 2);
-                        try writeJsonScalarValue(scalar, "value", writer);
-                        try writer.writeAll(";\n");
-                    },
-                    .enumeration => |enum_name| {
-                        try writeJsonPrefix(field, writer, depth + 2);
-                        try indent(writer, depth + 2);
-                        try writeJsonEnumValue(file, enum_name, "value", writer);
-                        try writer.writeAll(";\n");
-                    },
-                    .message, .group => |type_name| {
-                        if (wktJson(ctx, type_name)) |wkt_kind| {
-                            try writeJsonPrefix(field, writer, depth + 2);
-                            try indent(writer, depth + 2);
-                            try writer.writeAll("_ = &value;\n");
-                            try indent(writer, depth + 2);
-                            try writer.writeAll("try ");
-                            try writeWktJsonStringifyExpr(wkt_kind, "value", writer);
-                            try writer.writeAll(";\n");
-                        } else if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
-                            try writeJsonPrefix(field, writer, depth + 2);
-                            if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
-                                try indent(writer, depth + 2);
-                                try writer.writeAll("try value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
-                            } else {
-                                try writeDecodeAndStringifyPayload(ctx, type_name, "value", writer, depth + 2);
-                            }
-                        } else {
-                            try indent(writer, depth + 2);
-                            try writer.writeAll("_ = value;\n");
-                        }
-                    },
-                    else => {
-                        try indent(writer, depth + 2);
-                        try writer.writeAll("_ = value;\n");
-                    },
-                }
-                try indent(writer, depth + 1);
-                try writer.writeAll("},\n");
-            }
-        }
-    }
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn writeJsonExtensionFields(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
-    for (file.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, message, field) and jsonExtensionSupportedWithContext(ctx, field)) try writeJsonExtensionField(ctx, field, writer, depth);
-    }
-    for (file.messages.items) |*scope| try writeJsonScopedExtensionFields(ctx, message, scope, writer, depth);
-}
-
-fn writeJsonScopedExtensionFields(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
-    for (scope.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, target, field) and jsonExtensionSupportedWithContext(ctx, field)) try writeJsonExtensionField(ctx, field, writer, depth);
-    }
-    for (scope.messages.items) |*nested| try writeJsonScopedExtensionFields(ctx, target, nested, writer, depth);
-}
-
-fn writeJsonExtensionField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
-    switch (field.kind) {
-        .scalar, .enumeration => {},
-        .message => |type_name| {
-            if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return;
-        },
-        else => return,
-    }
-    try indent(writer, depth);
-    try writer.writeAll("{\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("const values = try ");
-    try writeExtensionHelperReference(field, writer);
-    try writer.writeAll(".decodeAllFromUnknown(self, allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("defer allocator.free(values);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("if (values.len != 0) {\n");
-    try writeJsonExtensionPrefix(file, field, writer, depth + 2);
-    if (field.cardinality == .repeated) {
-        try indent(writer, depth + 2);
-        try writer.writeAll("try writer.writeAll(\"[\");\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("for (values, 0..) |value, i| { if (i != 0) try writer.writeAll(\",\"); ");
-        try writeJsonExtensionValue(ctx, field.kind, "value", writer);
-        try writer.writeAll("; }\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("try writer.writeAll(\"]\");\n");
-    } else {
-        try indent(writer, depth + 2);
-        try writer.writeAll("const value = values[values.len - 1];\n");
-        try indent(writer, depth + 2);
-        try writeJsonExtensionValue(ctx, field.kind, "value", writer);
-        try writer.writeAll(";\n");
-    }
-    try indent(writer, depth + 1);
-    try writer.writeAll("}\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn writeJsonExtensionValue(ctx: *const CodegenContext, kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    const file = ctx.file;
-    switch (kind) {
-        .scalar => |scalar| try writeJsonScalarValue(scalar, value_expr, writer),
-        .enumeration => |name| try writeJsonEnumValue(file, name, value_expr, writer),
-        .message, .group => |type_name| {
-            try writer.writeAll("try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: anytype, payload_: []const u8) !void { var _pbz_nested = try ");
-            try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-            try writer.writeAll(".decode(allocator_, payload_); defer _pbz_nested.deinit(allocator_); try _pbz_nested.jsonStringifyWithOptions(allocator_, writer_, .{ .enum_as_name = options_.enum_as_name, .preserve_proto_field_names = options_.preserve_proto_field_names, .always_print_primitive_fields = options_.always_print_primitive_fields }); } }.write(allocator, writer, options, ");
-            try writer.writeAll(value_expr);
-            try writer.writeAll(")");
-        },
-        else => try writer.writeAll("@compileError(\"unsupported JSON extension value\")"),
-    }
-}
-
-fn writeJsonExtensionPrefix(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    try indent(writer, depth);
-    try writer.writeAll("try writer.writeAll(if (first) \"\\\"[");
-    try writeExtensionTextNameContents(file, field, true, writer);
-    try writer.writeAll("]\\\":\" else \",\\\"[");
-    try writeExtensionTextNameContents(file, field, true, writer);
-    try writer.writeAll("]\\\":\"); first = false;\n");
-}
-
-fn writeJsonScalarValue(scalar: schema.ScalarType, prefix: []const u8, writer: *std.Io.Writer) Error!void {
-    switch (scalar) {
-        .string => try writer.print("try @This().jsonWriteString(writer, {s})", .{prefix}),
-        .bytes => try writer.print("try writer.writeByte('\"'); try std.base64.standard.Encoder.encodeWriter(writer, {s}); try writer.writeByte('\"')", .{prefix}),
-        .int64, .uint64, .sint64, .fixed64, .sfixed64 => try writer.print("try writer.print(\"\\\"{{d}}\\\"\", .{{{s}}})", .{prefix}),
-        .bool => try writer.print("try writer.writeAll(if ({s}) \"true\" else \"false\")", .{prefix}),
-        .double, .float => try writer.print("if (std.math.isNan({s})) try writer.writeAll(\"\\\"NaN\\\"\") else if (std.math.isPositiveInf({s})) try writer.writeAll(\"\\\"Infinity\\\"\") else if (std.math.isNegativeInf({s})) try writer.writeAll(\"\\\"-Infinity\\\"\") else try writer.print(\"{{d}}\", .{{{s}}})", .{ prefix, prefix, prefix, prefix }),
-        else => try writer.print("try writer.print(\"{{d}}\", .{{{s}}})", .{prefix}),
-    }
-}
-
-fn writeJsonEnumValue(file: *const schema.FileDescriptor, enum_name: []const u8, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    if (std.mem.eql(u8, enum_name, "google.protobuf.NullValue")) {
-        try writer.print("_ = &{s}; try writer.writeAll(\"null\")", .{value_expr});
-        return;
-    }
-    try writer.print("try @This().jsonWriteEnum(writer, {s}, ", .{value_expr});
-    try writeEnumNameArray(file, enum_name, writer);
-    try writer.writeAll(", ");
-    try writeEnumNumberArray(file, enum_name, writer);
-    try writer.writeAll(", options.enum_as_name");
-    try writer.writeAll(")");
 }
 
 fn writeMessageDynamicBridge(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -12848,7 +10286,7 @@ pub fn writeQuotedIdent(name: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.writeAll("\"");
 }
 
-fn writeQuotedIdentWithSuffix(name: []const u8, suffix: []const u8, writer: *std.Io.Writer) Error!void {
+pub fn writeQuotedIdentWithSuffix(name: []const u8, suffix: []const u8, writer: *std.Io.Writer) Error!void {
     if (canWriteBareIdentParts("", name, suffix)) {
         try writer.writeAll(name);
         return try writer.writeAll(suffix);
@@ -12862,7 +10300,7 @@ fn writeQuotedIdentWithSuffix(name: []const u8, suffix: []const u8, writer: *std
     try writer.writeAll("\"");
 }
 
-fn writeQuotedIdentWithPrefix(name: []const u8, prefix: []const u8, writer: *std.Io.Writer) Error!void {
+pub fn writeQuotedIdentWithPrefix(name: []const u8, prefix: []const u8, writer: *std.Io.Writer) Error!void {
     if (canWriteBareIdentParts(prefix, name, "")) {
         try writer.writeAll(prefix);
         return try writer.writeAll(name);
@@ -12880,19 +10318,19 @@ fn extensionAccessorSuffix(name: []const u8) []const u8 {
     return leafTypeName(name);
 }
 
-fn hasPresence(file: *const schema.FileDescriptor, field: schema.FieldDescriptor) bool {
+pub fn hasPresence(file: *const schema.FileDescriptor, field: schema.FieldDescriptor) bool {
     if (field.cardinality == .required or field.proto3_optional or field.oneof_name != null or field.kind == .message or field.kind == .group) return true;
     if (field.cardinality == .repeated or field.kind == .map) return false;
     return schema.FeatureSet.effective(field.features, file.features).field_presence != .implicit;
 }
 
-fn isRequired(field: schema.FieldDescriptor) bool {
+pub fn isRequired(field: schema.FieldDescriptor) bool {
     if (field.cardinality == .required) return true;
     if (field.features) |features| return features.field_presence == .legacy_required;
     return false;
 }
 
-fn writePresenceIdent(name: []const u8, writer: *std.Io.Writer) Error!void {
+pub fn writePresenceIdent(name: []const u8, writer: *std.Io.Writer) Error!void {
     try writeIdentWithPrefix(name, "has_", writer);
 }
 
