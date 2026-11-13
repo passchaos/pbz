@@ -196,6 +196,10 @@ LargeMap 167725 -> 105665 ns in the same matrix). Generated JSON fill also
 rejects the same field reached through two accepted spellings
 (`big_delta`/`bigDelta`) and two different members of one oneof using a
 comptime `StaticBitSet`; the focused probe shows the checks inside noise.
+Generated fields typed as `Timestamp`, `Duration`, `FieldMask`, `Empty`, or a
+wrapper type now parse and emit their canonical JSON string/scalar/envelope
+forms instead of generic message objects. `Any`/`Struct`/`Value`/`ListValue`
+generated JSON still requires the dynamic path.
 A best-of-runs check with the
 same binaries interleaved on one CPU confirms the close rows: pbz wins every
 JSON parse row against upb by 1.14-1.99x, packed fixed64/sfixed64 encode and

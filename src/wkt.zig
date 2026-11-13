@@ -72,7 +72,12 @@ pub const Timestamp = struct {
         const json_allocator = stack_fallback.get();
         var payload = try jsonStringPayload(json_allocator, text, error.InvalidTimestamp);
         defer payload.deinit();
-        const unquoted = payload.text;
+        return try jsonParseUnquoted(payload.text);
+    }
+
+    /// Parse an already-decoded JSON string body (without surrounding quotes).
+    /// Generated code uses this to parse a `pbz.json.Value` string directly.
+    pub fn jsonParseUnquoted(unquoted: []const u8) !Timestamp {
         if (unquoted.len < 20 or unquoted[4] != '-' or unquoted[7] != '-' or
             unquoted[10] != 'T' or
             unquoted[13] != ':' or unquoted[16] != ':') return error.InvalidTimestamp;
@@ -301,7 +306,12 @@ pub const Duration = struct {
         const json_allocator = stack_fallback.get();
         var payload = try jsonStringPayload(json_allocator, text, error.InvalidDuration);
         defer payload.deinit();
-        const unquoted = payload.text;
+        return try jsonParseUnquoted(payload.text);
+    }
+
+    /// Parse an already-decoded JSON string body (without surrounding quotes).
+    /// Generated code uses this to parse a `pbz.json.Value` string directly.
+    pub fn jsonParseUnquoted(unquoted: []const u8) !Duration {
         if (unquoted.len < 2 or unquoted[unquoted.len - 1] != 's') return error.InvalidDuration;
         var body = unquoted[0 .. unquoted.len - 1];
         var negative = false;
@@ -479,7 +489,12 @@ pub const FieldMask = struct {
     pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) ![][]const u8 {
         var payload = try jsonStringPayload(allocator, text, error.InvalidFieldMask);
         defer payload.deinit();
-        const unquoted = payload.text;
+        return try jsonParseUnquoted(allocator, payload.text);
+    }
+
+    /// Parse an already-decoded JSON string body (without surrounding quotes).
+    /// Generated code uses this to parse a `pbz.json.Value` string directly.
+    pub fn jsonParseUnquoted(allocator: std.mem.Allocator, unquoted: []const u8) ![][]const u8 {
         if (unquoted.len == 0) return try allocator.alloc([]const u8, 0);
         var paths: std.ArrayList([]const u8) = .empty;
         errdefer {
