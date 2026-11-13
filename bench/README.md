@@ -28,7 +28,9 @@ Baseline versions are pinned to the latest stable implementations available at
 the time of the audit:
 
 - C++ and upb protobuf: v36.2 (latest stable release; v37.0 was still a
-  release candidate)
+  release candidate, and v37.0-rc3's `descriptor.proto` is unchanged from
+  36.2 apart from comments, so 36.2 remains the representative stable
+  baseline)
 - Rust `prost`: 0.14.x
 - Rust `quick-protobuf`: 0.8.1
 - Go protobuf: v1.36.12, built with the Go 1.27.4 toolchain
