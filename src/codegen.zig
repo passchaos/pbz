@@ -5,6 +5,7 @@ const registry_mod = @import("registry.zig");
 const wire = @import("wire.zig");
 const plugin_emit = @import("codegen/plugin.zig");
 const service_emit = @import("codegen/service.zig");
+const enum_emit = @import("codegen/enum.zig");
 
 pub const Error = std.mem.Allocator.Error || std.Io.Writer.Error || plugin.Error || registry_mod.Error;
 
@@ -200,7 +201,7 @@ fn writePackageNamespace(ctx: *const CodegenContext, package: []const u8, writer
 }
 
 fn writeFileDecls(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
-    for (ctx.file.enums.items) |*enumeration| try writeEnum(ctx, enumeration, writer, depth);
+    for (ctx.file.enums.items) |*enumeration| try enum_emit.writeEnum(ctx, enumeration, writer, depth);
     for (ctx.file.messages.items) |*message| try writeMessage(ctx, message, writer, depth);
     try writeExtensionMetadata(ctx, writer, depth);
     try service_emit.writeServiceMetadata(ctx, writer, depth);
@@ -412,7 +413,7 @@ fn joinFullProtoName(allocator: std.mem.Allocator, package: []const u8, relative
     return try std.fmt.allocPrint(allocator, ".{s}.{s}", .{ package, relative });
 }
 
-fn enumFullNameForCodegen(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, target: *const schema.EnumDescriptor) std.mem.Allocator.Error!?[]const u8 {
+pub fn enumFullNameForCodegen(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, target: *const schema.EnumDescriptor) std.mem.Allocator.Error!?[]const u8 {
     for (file.enums.items) |*enumeration| {
         if (enumeration == target) return try joinFullProtoName(allocator, file.package, enumeration.name);
     }
@@ -677,7 +678,7 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
         try writeTextMethods(ctx, message, writer, depth + 1);
         try writer.writeAll("\n");
     }
-    for (message.enums.items) |*enumeration| try writeEnum(ctx, enumeration, writer, depth + 1);
+    for (message.enums.items) |*enumeration| try enum_emit.writeEnum(ctx, enumeration, writer, depth + 1);
     for (message.messages.items) |*nested| try writeMessage(ctx, nested, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
@@ -10701,7 +10702,7 @@ fn writeJsonParseMapValueExpr(ctx: *const CodegenContext, field: *const schema.F
     }
 }
 
-fn writeEnumNameArray(file: *const schema.FileDescriptor, name: []const u8, writer: *std.Io.Writer) Error!void {
+pub fn writeEnumNameArray(file: *const schema.FileDescriptor, name: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.writeAll("&.{");
     if (file.findEnumDeep(name)) |enumeration| {
         for (enumeration.values.items, 0..) |value, i| {
@@ -10712,7 +10713,7 @@ fn writeEnumNameArray(file: *const schema.FileDescriptor, name: []const u8, writ
     try writer.writeAll("}");
 }
 
-fn writeEnumNumberArray(file: *const schema.FileDescriptor, name: []const u8, writer: *std.Io.Writer) Error!void {
+pub fn writeEnumNumberArray(file: *const schema.FileDescriptor, name: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.writeAll("&.{");
     if (file.findEnumDeep(name)) |enumeration| {
         for (enumeration.values.items, 0..) |value, i| {
@@ -10723,7 +10724,7 @@ fn writeEnumNumberArray(file: *const schema.FileDescriptor, name: []const u8, wr
     try writer.writeAll("}");
 }
 
-fn enumIsClosed(file: *const schema.FileDescriptor, name: []const u8) bool {
+pub fn enumIsClosed(file: *const schema.FileDescriptor, name: []const u8) bool {
     if (file.findEnumDeep(name)) |enumeration| {
         return schema.FeatureSet.effective(enumeration.features, file.features).enum_type == .closed;
     }
@@ -11881,159 +11882,9 @@ fn writeMessageDescriptorLookup(ctx: *const CodegenContext, message: *const sche
     try writer.writeAll("}\n\n");
 }
 
-fn writeEnumDescriptorLookup(ctx: *const CodegenContext, enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    if (!ctx.emit_descriptor) return;
-    var arena = std.heap.ArenaAllocator.init(ctx.allocator);
-    defer arena.deinit();
-    const full_name = (try enumFullNameForCodegen(arena.allocator(), ctx.file, enumeration)) orelse return;
-    try indent(writer, depth);
-    try writer.writeAll("/// Look up this enum's descriptor in a decoded file descriptor.\n");
-    try indent(writer, depth);
-    try writer.writeAll("pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.EnumDescriptor {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return file.findEnumDeep(");
-    try writeZigStringLiteral(full_name, writer);
-    try writer.writeAll(");\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n\n");
-}
 
-fn writeEnum(ctx: *const CodegenContext, enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    try indent(writer, depth);
-    try writer.writeAll("pub const ");
-    try writeQuotedIdent(enumeration.name, writer);
-    try writer.writeAll(" = enum(i32) {\n");
-    for (enumeration.values.items, 0..) |value, index| {
-        if (enumFirstValueIndexForNumber(enumeration, value.number) != index) continue;
-        try indent(writer, depth + 1);
-        try writeQuotedIdent(value.name, writer);
-        try writer.print(" = {d},\n", .{value.number});
-    }
-    for (enumeration.values.items, 0..) |value, index| {
-        const first_index = enumFirstValueIndexForNumber(enumeration, value.number) orelse continue;
-        if (first_index == index) continue;
-        const first = &enumeration.values.items[first_index];
-        try indent(writer, depth + 1);
-        try writer.writeAll("pub const ");
-        try writeQuotedIdent(value.name, writer);
-        try writer.writeAll(" = @This().");
-        try writeQuotedIdent(first.name, writer);
-        try writer.writeAll(";\n");
-    }
-    try writeEnumHelpers(enumeration, writer, depth + 1);
-    try writeEnumDescriptorLookup(ctx, enumeration, writer, depth + 1);
-    try indent(writer, depth);
-    try writer.writeAll("};\n\n");
-}
 
-fn writeEnumHelpers(enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    try indent(writer, depth);
-    try writer.writeAll("pub fn fromInt(value: i32) ?@This() {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return switch (value) {\n");
-    for (enumeration.values.items, 0..) |value, index| {
-        if (enumFirstValueIndexForNumber(enumeration, value.number) != index) continue;
-        try indent(writer, depth + 2);
-        try writer.print("{d} => .", .{value.number});
-        try writeQuotedIdent(value.name, writer);
-        try writer.writeAll(",\n");
-    }
-    try indent(writer, depth + 2);
-    try writer.writeAll("else => null,\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("};\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
 
-    try indent(writer, depth);
-    try writer.writeAll("pub fn toInt(self: @This()) i32 {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return @intFromEnum(self);\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn protoName(self: @This()) []const u8 {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return switch (self) {\n");
-    for (enumeration.values.items, 0..) |value, index| {
-        if (enumFirstValueIndexForNumber(enumeration, value.number) != index) continue;
-        try indent(writer, depth + 2);
-        try writer.writeByte('.');
-        try writeQuotedIdent(value.name, writer);
-        try writer.writeAll(" => ");
-        try writeZigStringLiteral(value.name, writer);
-        try writer.writeAll(",\n");
-    }
-    try indent(writer, depth + 1);
-    try writer.writeAll("};\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn fromName(name: []const u8) ?@This() {\n");
-    for (enumeration.values.items) |value| {
-        const first_index = enumFirstValueIndexForNumber(enumeration, value.number) orelse continue;
-        const first = &enumeration.values.items[first_index];
-        try indent(writer, depth + 1);
-        try writer.writeAll("if (std.mem.eql(u8, name, ");
-        try writeZigStringLiteral(value.name, writer);
-        try writer.writeAll(")) return .");
-        try writeQuotedIdent(first.name, writer);
-        try writer.writeAll(";\n");
-    }
-    try indent(writer, depth + 1);
-    try writer.writeAll("return null;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn jsonParse(value: pbz.json.Value) !@This() {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return switch (value) {\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll(".string => |name| fromName(name) orelse error.InvalidEnumValue,\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll(".integer => |number| fromInt(std.math.cast(i32, number) orelse return error.Overflow) orelse error.InvalidEnumValue,\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll(".number_string => |text| fromInt(try std.fmt.parseInt(i32, text, 10)) orelse error.InvalidEnumValue,\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll("else => error.TypeMismatch,\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("};\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn textParse(value: []const u8) !@This() {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("if (fromName(value)) |known| return known;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return fromInt(try std.fmt.parseInt(i32, value, 10)) orelse error.InvalidEnumValue;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn textFormat(self: @This(), writer: *std.Io.Writer) !void {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try writer.writeAll(self.protoName());\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-
-    try indent(writer, depth);
-    try writer.writeAll("pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try std.json.Stringify.value(self.protoName(), .{}, writer);\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn enumFirstValueIndexForNumber(enumeration: *const schema.EnumDescriptor, number: i32) ?usize {
-    for (enumeration.values.items, 0..) |value, index| {
-        if (value.number == number) return index;
-    }
-    return null;
-}
 
 fn writeExtensionMetadata(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
     const file = ctx.file;
