@@ -91,9 +91,10 @@ for the Go baseline:
 PBZ_COMPARE_CPUSET=3 bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 ```
 
-The latest accepted full-gate evidence is
-`bench/results/2026-11-12-linux-x86_64.md`, generated from a pinned run against
-protobuf 35.1; conformance evidence has since moved to protobuf 36.2. The
+The latest accepted full-gate evidence is the cumulative
+`bench/results/2026-11-12-linux-x86_64.md`: its original sections used
+protobuf 35.1, and the 2026-11-13 sections use protobuf 36.2 (latest stable)
+for the C++/upb baselines plus the latest accepted fair-mode matrix. The
 mixed-mode fail-on-loss summary gate ended with:
 
 ```text
@@ -101,7 +102,9 @@ All parsed cross-language rows are pbz wins.
 ```
 
 The same run also records the fair-mode (`--exclude-zero-copy`) pivot and its
-three residual rows.
+three residual rows. A final clean three-round P-core gate is armed and
+pending an idle machine; the current 36.2 numbers use the pinned-core
+best-of-runs methodology documented in the snapshot.
 
 The same audit pass also kept these functional coverage gates green:
 
