@@ -106,7 +106,9 @@ CONFORMANCE SUITE PASSED: 445 successes, 0 skipped, 0 expected failures, 0 unexp
 The generated path decodes binary requests with generated types, encodes them,
 and normalizes the response through the registry-aware dynamic encoder so
 canonical byte layout matches the reference for cyclic raw fields and unknown
-field ordering.
+field ordering. With `PBZ_CONFORMANCE_GENERATED_JSON=1` and
+`PBZ_CONFORMANCE_GENERATED_TEXT=1` the same 2808/445 results are produced
+entirely by generated parse/stringify/format code.
 
 A lightweight smoke test is also available:
 

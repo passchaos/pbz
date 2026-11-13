@@ -404,5 +404,9 @@ claiming broad superiority beyond the covered workloads:
   and borrow string slices from its backing text. Callers must keep both the
   text and the provided arena alive; `jsonParse` remains the owning text entry
   point and copies the input into its own arena.
+- Generated `Any` JSON and the generated TextFormat fallback build a descriptor
+  registry from the embedded file descriptor plus imports on each call. This is
+  correctness-first; messages without Any use the direct generated JSON path,
+  and `parseText` uses the fast line-oriented path unless it cannot parse.
 - Benchmark results are hardware- and compiler-sensitive; keep using
   `--fail-on-loss` on the same machine before making performance claims.
