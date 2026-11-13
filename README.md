@@ -120,9 +120,9 @@ extensions, `local`/`export` visibility modifiers, proto2 oneof defaults,
 numbers. `FileDescriptorSet` decode/encode round-trips every protoc 36.2
 descriptor set for that corpus with zero errors, preserving visibility,
 map-entry `json_name`, `packed = false`, proto2 oneof defaults, original
-`default_value` text, and unknown custom option/feature payloads; 157/161
-re-encoded sets are text-identical, and the remaining 4 differ only in
-nested-type ordering. `LoadOptions.validate_custom_options`
+`default_value` text, unknown custom option/feature payloads, and nested-type
+ordering; all 161 re-encoded sets are text-identical to protoc's after
+removing only empty `options {}`/`features {}` blocks. `LoadOptions.validate_custom_options`
 opts into protoc-parity option validation: over the same corpus it accepts and
 rejects exactly the same 161/22 files as protoc, including nested extension
 paths and unknown plain option names.

@@ -140,9 +140,25 @@ fn writeMessageDescriptor(
     defer allocator.free(scope);
 
     for (message.fields.items) |*field| try writeFieldDescriptor(allocator, file, registry, message, scope, field, 2, &tmp);
-    for (message.messages.items) |*nested| try writeMessageDescriptor(allocator, file, registry, nested, scope, 3, &tmp);
-    for (message.fields.items) |*field| {
-        if (field.kind == .map) try writeMapEntryDescriptor(allocator, file, registry, scope, field, 3, &tmp);
+    if (message.nested_order.items.len != 0) {
+        // Decoded descriptors keep protoc's nested_type order, including
+        // collapsed map-entry messages at their original positions.
+        for (message.nested_order.items) |nested_name| {
+            if (findNestedMessageByName(message, nested_name)) |nested| {
+                try writeMessageDescriptor(allocator, file, registry, nested, scope, 3, &tmp);
+                continue;
+            }
+            if (findMapFieldByEntryName(message, nested_name)) |field| {
+                try writeMapEntryDescriptor(allocator, file, registry, scope, field, 3, &tmp);
+                continue;
+            }
+            return error.InvalidFieldType;
+        }
+    } else {
+        for (message.messages.items) |*nested| try writeMessageDescriptor(allocator, file, registry, nested, scope, 3, &tmp);
+        for (message.fields.items) |*field| {
+            if (field.kind == .map) try writeMapEntryDescriptor(allocator, file, registry, scope, field, 3, &tmp);
+        }
     }
     for (message.enums.items) |*enumeration| try writeEnumDescriptor(allocator, file, enumeration, 4, &tmp);
     for (message.extension_ranges.items) |*range| try writeExtensionRange(allocator, message, range, 5, &tmp);
@@ -1338,6 +1354,38 @@ fn splitTypePath(path: []const u8) struct { []const u8, []const u8 } {
 fn joinScope(allocator: std.mem.Allocator, parent: []const u8, name: []const u8) std.mem.Allocator.Error![]u8 {
     if (parent.len == 0) return try allocator.dupe(u8, name);
     return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ parent, name });
+}
+
+fn findNestedMessageByName(message: *const schema.MessageDescriptor, name: []const u8) ?*const schema.MessageDescriptor {
+    for (message.messages.items) |*nested| {
+        if (std.mem.eql(u8, nested.name, name)) return nested;
+    }
+    return null;
+}
+
+fn findMapFieldByEntryName(message: *const schema.MessageDescriptor, entry_name: []const u8) ?*const schema.FieldDescriptor {
+    for (message.fields.items) |*field| {
+        if (field.kind != .map) continue;
+        if (mapEntryNameEquals(field.name, entry_name)) return field;
+    }
+    return null;
+}
+
+fn mapEntryNameEquals(field_name: []const u8, entry_name: []const u8) bool {
+    var index: usize = 0;
+    var capitalize_next = true;
+    for (field_name) |c| {
+        if (c == '_') {
+            capitalize_next = true;
+            continue;
+        }
+        if (index >= entry_name.len) return false;
+        const expected = if (capitalize_next) std.ascii.toUpper(c) else c;
+        if (entry_name[index] != expected) return false;
+        index += 1;
+        capitalize_next = false;
+    }
+    return entry_name.len == index + "Entry".len and std.mem.eql(u8, entry_name[index..], "Entry");
 }
 
 fn mapEntryName(allocator: std.mem.Allocator, field_name: []const u8) std.mem.Allocator.Error![]u8 {
@@ -3679,6 +3727,10 @@ fn collapseMapEntryMessages(allocator: std.mem.Allocator, file: *schema.FileDesc
 }
 
 fn collapseMapEntriesInMessage(allocator: std.mem.Allocator, message: *schema.MessageDescriptor) Error!void {
+    if (message.messages.items.len != 0) {
+        try message.nested_order.ensureTotalCapacity(allocator, message.messages.items.len);
+        for (message.messages.items) |*nested| try message.nested_order.append(allocator, nested.name);
+    }
     var index: usize = 0;
     while (index < message.messages.items.len) {
         if (try isMapEntryMessage(message.messages.items[index])) {

@@ -903,6 +903,9 @@ pub const MessageDescriptor = struct {
     /// Raw unknown fields of the descriptor Options message, preserved so a
     /// decoded FileDescriptorSet re-encodes custom option payloads.
     unknown_options: std.ArrayList([]const u8) = .empty,
+    /// Original nested_type order (declared messages and collapsed map-entry
+    /// names) for decoded descriptors, so re-encoding preserves protoc order.
+    nested_order: std.ArrayList([]const u8) = .empty,
     /// Edition 2024+ `local`/`export` modifier, serialized as
     /// DescriptorProto.visibility (field 11).
     visibility: SymbolVisibility = .default,
@@ -924,6 +927,7 @@ pub const MessageDescriptor = struct {
         self.reserved_names.deinit(allocator);
         deinitOptions(&self.options, allocator);
         self.unknown_options.deinit(allocator);
+        self.nested_order.deinit(allocator);
         self.* = undefined;
     }
 
