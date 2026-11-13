@@ -1217,6 +1217,7 @@ pub const demo = struct {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i32) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(i32, item));
                     self.scores = blk: { const old = self.scores; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -3210,6 +3211,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(bool) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonBool(item));
                     self.flags = blk: { const old = self.flags; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -3220,6 +3222,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(u64) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(u64, item));
                     self.ids = blk: { const old = self.ids; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -4660,6 +4663,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList([]const u8) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonString(item));
                     self.tags = blk: { const old = self.tags; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -4670,6 +4674,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList([]const u8) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonBytes(arena_allocator, item));
                     self.chunks = blk: { const old = self.chunks; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -5913,6 +5918,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList([]const u8) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonBytes(arena_allocator, item));
                     self.chunks = blk: { const old = self.chunks; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -9994,6 +10000,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i32) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(i32, item));
                     self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -11249,6 +11256,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(u32) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(u32, item));
                     self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -12496,6 +12504,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(u64) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(u64, item));
                     self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -13743,6 +13752,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i32) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(i32, item));
                     self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -14990,6 +15000,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i64) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(i64, item));
                     self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -16237,6 +16248,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(f32) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonFloat(f32, item));
                     self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -17484,6 +17496,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(f64) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonFloat(f64, item));
                     self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -18737,6 +18750,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(u64) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(u64, item));
                     self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -19990,6 +20004,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(u32) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(u32, item));
                     self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -21243,6 +21258,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i64) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(i64, item));
                     self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -22496,6 +22512,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i32) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(i32, item));
                     self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -23749,6 +23766,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i64) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(i64, item));
                     self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -24977,6 +24995,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(bool) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| try list.append(allocator, try @This().jsonBool(item));
                     self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
@@ -26233,6 +26252,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i32) = .empty;
                     errdefer list.deinit(allocator);
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| {
                         const parsed_enum = @This().jsonEnum(item, &.{"BENCH_KIND_UNKNOWN", "BENCH_KIND_ALPHA", "BENCH_KIND_BETA"}, &.{0, 1, 2}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };
                         try list.append(allocator, parsed_enum);
@@ -29365,6 +29385,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(Audit) = .empty;
                     errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }
+                    try list.ensureTotalCapacity(allocator, array.items.len);
                     for (array.items) |item| {
                         var _pbz_nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         errdefer _pbz_nested.deinit(allocator);

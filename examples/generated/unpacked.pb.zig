@@ -813,6 +813,7 @@ pub const demo = struct {
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList(i32) = .empty;
                         errdefer list.deinit(allocator);
+                        try list.ensureTotalCapacity(allocator, array.items.len);
                         for (array.items) |item| try list.append(allocator, try @This().jsonInt(i32, item));
                         self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                         continue;
@@ -823,6 +824,7 @@ pub const demo = struct {
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList(bool) = .empty;
                         errdefer list.deinit(allocator);
+                        try list.ensureTotalCapacity(allocator, array.items.len);
                         for (array.items) |item| try list.append(allocator, try @This().jsonBool(item));
                         self.flags = blk: { const old = self.flags; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                         continue;
@@ -833,6 +835,7 @@ pub const demo = struct {
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList(i32) = .empty;
                         errdefer list.deinit(allocator);
+                        try list.ensureTotalCapacity(allocator, array.items.len);
                         for (array.items) |item| {
                             const parsed_enum = @This().jsonEnum(item, &.{"KIND_UNKNOWN", "KIND_A", "KIND_B"}, &.{0, 1, 2}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };
                             try list.append(allocator, parsed_enum);

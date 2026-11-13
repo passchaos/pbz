@@ -1063,6 +1063,7 @@ pub const demo = struct {
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList(Inner) = .empty;
                         errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }
+                        try list.ensureTotalCapacity(allocator, array.items.len);
                         for (array.items) |item| {
                             var _pbz_nested = try Inner.jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                             errdefer _pbz_nested.deinit(allocator);

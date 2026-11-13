@@ -1867,6 +1867,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList(Child) = .empty;
                         errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }
+                        try list.ensureTotalCapacity(allocator, array.items.len);
                         for (array.items) |item| {
                             var _pbz_nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                             errdefer _pbz_nested.deinit(allocator);

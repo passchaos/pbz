@@ -1116,6 +1116,7 @@ pub const demo = struct {
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList([]const u8) = .empty;
                         errdefer list.deinit(allocator);
+                        try list.ensureTotalCapacity(allocator, array.items.len);
                         for (array.items) |item| try list.append(allocator, try @This().jsonString(item));
                         self.@"test" = blk: { const old = self.@"test"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                         continue;

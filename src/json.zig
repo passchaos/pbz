@@ -492,62 +492,74 @@ fn numberAsFloat(comptime T: type, json_value: Value) !T {
 }
 
 pub fn decodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
-    var data_chars: usize = 0;
-    var padding_chars: usize = 0;
-    var saw_padding = false;
-    for (value) |byte| {
-        if (byte == '=') {
-            saw_padding = true;
-            padding_chars += 1;
-            continue;
+    // Locate padding first; protobuf JSON accepts both base64 and base64url
+    // alphabets with optional padding.
+    const pad_start = std.mem.indexOfScalar(u8, value, '=') orelse value.len;
+    const padding = value.len - pad_start;
+    if (padding > 2) return error.InvalidPadding;
+    if (padding != 0) {
+        for (value[pad_start..]) |byte| {
+            if (byte != '=') return error.InvalidPadding;
         }
-        if (saw_padding) return error.InvalidPadding;
-        _ = base64Index(byte) orelse return error.InvalidCharacter;
-        data_chars += 1;
-    }
-    if (data_chars % 4 == 1) return error.InvalidPadding;
-    if (padding_chars > 2) return error.InvalidPadding;
-    if (padding_chars != 0) {
-        const expected_padding: usize = switch (data_chars % 4) {
+        const expected: usize = switch (pad_start % 4) {
             0 => 0,
             2 => 2,
             3 => 1,
-            else => unreachable,
+            else => return error.InvalidPadding,
         };
-        if (padding_chars != expected_padding) return error.InvalidPadding;
+        if (padding != expected) return error.InvalidPadding;
+    } else if (pad_start % 4 == 1) {
+        // Keep invalid-character errors distinct from padding errors.
+        for (value[0..pad_start]) |byte| {
+            if (base64_decode_table[byte] == 0xff) return error.InvalidCharacter;
+        }
+        return error.InvalidPadding;
     }
-    const size = (data_chars * 6) / 8;
-    const out = try allocator.alloc(u8, size);
+    const out = try allocator.alloc(u8, (pad_start * 6) / 8);
     errdefer allocator.free(out);
     var out_index: usize = 0;
-    var acc: u32 = 0;
-    var acc_bits: u5 = 0;
-    for (value) |byte| {
-        if (byte == '=') break;
-        const idx = base64Index(byte).?;
-        acc = (acc << 6) | idx;
-        acc_bits += 6;
-        while (acc_bits >= 8) {
-            acc_bits -= 8;
-            out[out_index] = @truncate(acc >> acc_bits);
+    var index: usize = 0;
+    while (index + 4 <= pad_start) : (index += 4) {
+        const a: u32 = base64_decode_table[value[index]];
+        const b: u32 = base64_decode_table[value[index + 1]];
+        const c: u32 = base64_decode_table[value[index + 2]];
+        const d: u32 = base64_decode_table[value[index + 3]];
+        if ((a | b | c | d) & 0xc0 != 0) return error.InvalidCharacter;
+        out[out_index] = @truncate((a << 2) | (b >> 4));
+        out[out_index + 1] = @truncate((b << 4) | (c >> 2));
+        out[out_index + 2] = @truncate((c << 6) | d);
+        out_index += 3;
+    }
+    const remaining = pad_start - index;
+    if (remaining >= 1) {
+        const a: u32 = base64_decode_table[value[index]];
+        const b: u32 = base64_decode_table[value[index + 1]];
+        if ((a | b) & 0xc0 != 0) return error.InvalidCharacter;
+        out[out_index] = @truncate((a << 2) | (b >> 4));
+        out_index += 1;
+        if (remaining == 3) {
+            const c: u32 = base64_decode_table[value[index + 2]];
+            if (c & 0xc0 != 0) return error.InvalidCharacter;
+            out[out_index] = @truncate((b << 4) | (c >> 2));
             out_index += 1;
-            acc &= (@as(u32, 1) << acc_bits) - 1;
         }
     }
     std.debug.assert(out_index == out.len);
     return out;
 }
 
-fn base64Index(byte: u8) ?u32 {
-    return switch (byte) {
-        'A'...'Z' => byte - 'A',
-        'a'...'z' => 26 + byte - 'a',
-        '0'...'9' => 52 + byte - '0',
-        '+', '-' => 62,
-        '/', '_' => 63,
-        else => null,
-    };
-}
+const base64_decode_table = blk: {
+    @setEvalBranchQuota(4000);
+    var table = [_]u8{0xff} ** 256;
+    for ('A'..'Z' + 1, 0..) |byte, i| table[byte] = @intCast(i);
+    for ('a'..'z' + 1, 26..) |byte, i| table[byte] = @intCast(i);
+    for ('0'..'9' + 1, 52..) |byte, i| table[byte] = @intCast(i);
+    table['+'] = 62;
+    table['-'] = 62;
+    table['/'] = 63;
+    table['_'] = 63;
+    break :blk table;
+};
 
 fn resolveMessageDescriptor(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, name: []const u8) ?*const schema.MessageDescriptor {
     const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
@@ -1716,6 +1728,31 @@ fn writeLowerCamel(name: []const u8, writer: *std.Io.Writer) Error!void {
             try writer.writeByte(c);
         }
     }
+}
+
+test "json base64 accepts both alphabets and optional padding" {
+    const allocator = std.testing.allocator;
+    const cases = [_]struct { input: []const u8, expected: []const u8 }{
+        .{ .input = "", .expected = "" },
+        .{ .input = "Zg==", .expected = "f" },
+        .{ .input = "Zm8=", .expected = "fo" },
+        .{ .input = "Zm9v", .expected = "foo" },
+        .{ .input = "Zg", .expected = "f" },
+        .{ .input = "Zm8", .expected = "fo" },
+        .{ .input = "Zm9vYmFy", .expected = "foobar" },
+        .{ .input = "++//", .expected = &.{ 0xfb, 0xef, 0xff } },
+        .{ .input = "--__", .expected = &.{ 0xfb, 0xef, 0xff } },
+    };
+    for (cases) |case| {
+        const decoded = try decodeBase64(allocator, case.input);
+        defer allocator.free(decoded);
+        try std.testing.expectEqualSlices(u8, case.expected, decoded);
+    }
+    try std.testing.expectError(error.InvalidCharacter, decodeBase64(allocator, "Zm9v!"));
+    try std.testing.expectError(error.InvalidPadding, decodeBase64(allocator, "Z"));
+    try std.testing.expectError(error.InvalidPadding, decodeBase64(allocator, "Zg="));
+    try std.testing.expectError(error.InvalidPadding, decodeBase64(allocator, "Zg==="));
+    try std.testing.expectError(error.InvalidPadding, decodeBase64(allocator, "Zg==Zg=="));
 }
 
 test "json stringify dynamic message with scalars repeated maps enums and nested messages" {

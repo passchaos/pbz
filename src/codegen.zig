@@ -10349,6 +10349,8 @@ fn writeJsonParseField(ctx: *const CodegenContext, field: *const schema.FieldDes
         try writer.writeAll(") = .empty;\n");
         try indent(writer, depth + 1);
         try writer.writeAll("errdefer list.deinit(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try list.ensureTotalCapacity(allocator, array.items.len);\n");
         if (field.kind == .enumeration) {
             try indent(writer, depth + 1);
             try writer.writeAll("for (array.items) |item| {\n");
@@ -10415,6 +10417,8 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
             try writer.writeAll(") = .empty;\n");
             try indent(writer, depth + 1);
             try writer.writeAll("errdefer list.deinit(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try list.ensureTotalCapacity(allocator, array.items.len);\n");
             try indent(writer, depth + 1);
             try writer.writeAll("for (array.items) |item| try list.append(allocator, ");
             try writeWktJsonParseExpr(wkt_kind, "item", "arena_allocator", writer);
@@ -10450,6 +10454,8 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
             try indent(writer, depth + 1);
             try writer.writeAll("errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }\n");
             try indent(writer, depth + 1);
+            try writer.writeAll("try list.ensureTotalCapacity(allocator, array.items.len);\n");
+            try indent(writer, depth + 1);
             try writer.writeAll("for (array.items) |item| {\n");
             try indent(writer, depth + 2);
             try writer.writeAll("var _pbz_nested = try ");
@@ -10479,6 +10485,8 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
         try writer.writeAll("var list: std.ArrayList([]const u8) = .empty;\n");
         try indent(writer, depth + 1);
         try writer.writeAll("errdefer list.deinit(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try list.ensureTotalCapacity(allocator, array.items.len);\n");
         try indent(writer, depth + 1);
         try writer.writeAll("for (array.items) |item| {\n");
         try indent(writer, depth + 2);

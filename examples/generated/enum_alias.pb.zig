@@ -743,6 +743,7 @@ pub const demo = struct {
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList(i32) = .empty;
                         errdefer list.deinit(allocator);
+                        try list.ensureTotalCapacity(allocator, array.items.len);
                         for (array.items) |item| {
                             const parsed_enum = @This().jsonEnum(item, &.{"STATUS_UNKNOWN", "STATUS_STARTED", "STATUS_RUNNING", "STATUS_DONE"}, &.{0, 1, 1, 2}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };
                             try list.append(allocator, parsed_enum);
