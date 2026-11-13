@@ -1680,7 +1680,7 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
             try writer.writeAll(" = payload;\n");
             try indent(writer, depth);
             try writer.writeAll("}\n");
-            if (hasPresenceForTextParseMessage(field.*)) {
+            if (hasPresence(ctx.file, field.*)) {
                 try indent(writer, depth);
                 try writer.writeAll("self.");
                 try writePresenceIdent(field.name, writer);
@@ -1961,10 +1961,6 @@ fn writeExtensionHelperReference(field: *const schema.FieldDescriptor, writer: *
 
 fn writeExtensionHelperIdent(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
     try writeQuotedIdent(schema.extensionFullName(field), writer);
-}
-
-fn hasPresenceForTextParseMessage(field: schema.FieldDescriptor) bool {
-    return field.cardinality == .required or field.proto3_optional or field.kind == .message or field.kind == .group or if (field.features) |features| features.field_presence != .implicit else false;
 }
 
 fn writeTextParseValueExpr(file: *const schema.FileDescriptor, field: ?*const schema.FieldDescriptor, kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
@@ -8501,13 +8497,11 @@ fn writeMessagePayloadRead(file: *const schema.FileDescriptor, field: *const sch
 }
 
 fn fieldMessageEncoding(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) schema.FeatureSet.MessageEncoding {
-    if (field.features) |features| return features.message_encoding;
-    return file.features.message_encoding;
+    return schema.FeatureSet.effective(field.features, file.features).message_encoding;
 }
 
 fn fieldUtf8Validation(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) schema.FeatureSet.Utf8Validation {
-    if (field.features) |features| return features.utf8_validation;
-    return file.features.utf8_validation;
+    return schema.FeatureSet.effective(field.features, file.features).utf8_validation;
 }
 
 fn fieldUtf8ValidationOptional(file: *const schema.FileDescriptor, field: ?*const schema.FieldDescriptor) schema.FeatureSet.Utf8Validation {
@@ -11012,7 +11006,7 @@ fn writeEnumNumberArray(file: *const schema.FileDescriptor, name: []const u8, wr
 
 fn enumIsClosed(file: *const schema.FileDescriptor, name: []const u8) bool {
     if (file.findEnumDeep(name)) |enumeration| {
-        if (enumeration.features) |features| return features.enum_type == .closed;
+        return schema.FeatureSet.effective(enumeration.features, file.features).enum_type == .closed;
     }
     return file.features.enum_type == .closed;
 }
@@ -13319,8 +13313,7 @@ fn extensionAccessorSuffix(name: []const u8) []const u8 {
 fn hasPresence(file: *const schema.FileDescriptor, field: schema.FieldDescriptor) bool {
     if (field.cardinality == .required or field.proto3_optional or field.oneof_name != null or field.kind == .message or field.kind == .group) return true;
     if (field.cardinality == .repeated or field.kind == .map) return false;
-    if (field.features) |features| return features.field_presence != .implicit;
-    return file.features.field_presence != .implicit;
+    return schema.FeatureSet.effective(field.features, file.features).field_presence != .implicit;
 }
 
 fn isRequired(field: schema.FieldDescriptor) bool {

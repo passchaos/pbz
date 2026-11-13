@@ -13,7 +13,7 @@ pub fn main() !void {
         \\option features.repeated_field_encoding = EXPANDED;
         \\option features.enum_type = OPEN;
         \\message Child {
-        \\  option features.message_encoding = DELIMITED;
+        \\  option features.json_format = LEGACY_BEST_EFFORT;
         \\  string label = 1;
         \\  int32 id = 2;
         \\}
@@ -33,18 +33,18 @@ pub fn main() !void {
         \\  Role role = 8;
         \\  int32 required_id = 9 [features.field_presence = LEGACY_REQUIRED];
         \\  oneof choice {
-        \\    option features.field_presence = EXPLICIT;
+        \\    option features.enforce_naming_style = STYLE2024;
         \\    int32 picked = 10;
         \\  }
         \\}
         \\service EditionsApi {
         \\  option features.enforce_naming_style = STYLE2024;
         \\  rpc Get (Editions) returns (Editions) {
-        \\    option features.enforce_proto_limits = PROTO_LIMITS2026;
+        \\    option features.enforce_naming_style = STYLE_LEGACY;
         \\  }
         \\}
         \\message FeatureHost {
-        \\  extensions 100 to max [features.repeated_field_encoding = PACKED];
+        \\  extensions 100 to max [features.enforce_naming_style = STYLE_LEGACY];
         \\}
     );
     defer file.deinit();
@@ -65,9 +65,9 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.FeatureSet.Utf8Validation.verify, refl.fileUtf8Validation(&file));
     try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.length_prefixed, refl.fileMessageEncoding(&file));
     try std.testing.expectEqual(pbz.schema.FeatureSet.JsonFormat.allow, refl.fileJsonFormat(&file));
-    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceNamingStyle.style_legacy, refl.fileEnforceNamingStyle(&file));
-    try std.testing.expectEqual(pbz.schema.FeatureSet.DefaultSymbolVisibility.export_all, refl.fileDefaultSymbolVisibility(&file));
-    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceProtoLimits.legacy_no_explicit_limits, refl.fileEnforceProtoLimits(&file));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceNamingStyle.style2026, refl.fileEnforceNamingStyle(&file));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.DefaultSymbolVisibility.strict, refl.fileDefaultSymbolVisibility(&file));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceProtoLimits.proto_limits2026, refl.fileEnforceProtoLimits(&file));
     const file_features = refl.fileFeatures(&file);
     try std.testing.expect(refl.featureSetEqual(file_features, file.features));
     try std.testing.expectEqual(pbz.schema.FeatureSet.FieldPresence.explicit, refl.featureSetFieldPresence(file_features));
@@ -76,9 +76,9 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.FeatureSet.Utf8Validation.verify, refl.featureSetUtf8Validation(file_features));
     try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.length_prefixed, refl.featureSetMessageEncoding(file_features));
     try std.testing.expectEqual(pbz.schema.FeatureSet.JsonFormat.allow, refl.featureSetJsonFormat(file_features));
-    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceNamingStyle.style_legacy, refl.featureSetEnforceNamingStyle(file_features));
-    try std.testing.expectEqual(pbz.schema.FeatureSet.DefaultSymbolVisibility.export_all, refl.featureSetDefaultSymbolVisibility(file_features));
-    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceProtoLimits.legacy_no_explicit_limits, refl.featureSetEnforceProtoLimits(file_features));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceNamingStyle.style2026, refl.featureSetEnforceNamingStyle(file_features));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.DefaultSymbolVisibility.strict, refl.featureSetDefaultSymbolVisibility(file_features));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceProtoLimits.proto_limits2026, refl.featureSetEnforceProtoLimits(file_features));
 
     var defaults = pbz.FeatureSetDefaults{};
     defer defaults.deinit(allocator);
@@ -118,17 +118,17 @@ pub fn main() !void {
     try std.testing.expect(!refl.featureSetDefaultsHasOverridableFeaturesForEdition(&defaults, .unknown));
     try std.testing.expectError(error.MissingField, refl.featureSetDefaultsFixedFeaturesForEdition(&defaults, .unknown));
     try std.testing.expect(refl.messageHasExplicitFeatures(child_desc));
-    try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.delimited, (try refl.messageExplicitFeatures(child_desc)).message_encoding);
+    try std.testing.expectEqual(pbz.schema.FeatureSet.JsonFormat.legacy_best_effort, (try refl.messageExplicitFeatures(child_desc)).json_format);
     try std.testing.expect(!refl.messageHasExplicitFeatures(desc));
     try std.testing.expectError(error.MissingField, refl.messageExplicitFeatures(desc));
     try std.testing.expect(refl.oneofHasExplicitFeatures(choice_oneof));
-    try std.testing.expectEqual(pbz.schema.FeatureSet.FieldPresence.explicit, (try refl.oneofExplicitFeatures(choice_oneof)).field_presence);
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceNamingStyle.style2024, (try refl.oneofExplicitFeatures(choice_oneof)).enforce_naming_style);
     try std.testing.expect(refl.serviceHasExplicitFeatures(service_desc));
     try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceNamingStyle.style2024, (try refl.serviceExplicitFeatures(service_desc)).enforce_naming_style);
     try std.testing.expect(refl.methodHasExplicitFeatures(get_method));
-    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceProtoLimits.proto_limits2026, (try refl.methodExplicitFeatures(get_method)).enforce_proto_limits);
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceNamingStyle.style_legacy, (try refl.methodExplicitFeatures(get_method)).enforce_naming_style);
     try std.testing.expect(refl.extensionRangeHasExplicitFeatures(feature_range));
-    try std.testing.expectEqual(pbz.schema.FeatureSet.RepeatedFieldEncoding.packed_encoding, (try refl.extensionRangeExplicitFeatures(feature_range)).repeated_field_encoding);
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceNamingStyle.style_legacy, (try refl.extensionRangeExplicitFeatures(feature_range)).enforce_naming_style);
     try std.testing.expectEqual(pbz.schema.FeatureSet.EnumType.closed, try refl.enumType(file.findEnum("Role") orelse return error.MissingDescriptor));
     const role_desc = file.findEnum("Role") orelse return error.MissingDescriptor;
     try std.testing.expect(refl.enumHasExplicitFeatures(role_desc));

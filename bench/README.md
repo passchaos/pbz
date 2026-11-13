@@ -25,7 +25,7 @@ bench/run_compare.sh
 ```
 
 Set `PBZ_COMPARE_LATEST_CPP=1` to additionally build and run the full C++
-benchmark against the conformance-pinned protobuf release (default v35.1)
+benchmark against the conformance-pinned protobuf release (default v36.2)
 instead of only the system libprotobuf. This requires cmake, ninja, and the
 conformance source/build cache. The focused `mini_bench.cc` subset remains
 available for quick checks.
@@ -191,7 +191,7 @@ Cross-language baselines:
   UnknownFieldSet stress decode/count rows, plus decode into fresh and reused
   message objects. `bench/cpp_protobuf/build_latest.sh` builds the full
   benchmark (`main.cc`) against the protobuf release used by conformance
-  (default v35.1) instead of the system libprotobuf; it reuses the conformance
+  (default v36.2) instead of the system libprotobuf; it reuses the conformance
   cache and requires cmake/ninja.
   `bench/cpp_protobuf/build_and_run.sh` generates C++ sources into an
   ignored `bench/cpp_protobuf/generated/` directory before compiling.

@@ -91,11 +91,11 @@ pub const ParseError = error{
 } || std.mem.Allocator.Error;
 
 pub const ParseOptions = struct {
-    /// Maximum `{}`/`[]` nesting accepted before returning
-    /// `error.DepthLimitExceeded`. Protobuf's own JSON parsers default to a
-    /// recursion limit of 100; 512 keeps valid deeply-nested documents working
-    /// while bounding stack use for hostile input.
-    max_depth: u32 = 512,
+    /// Maximum number of open `{}`/`[]` containers accepted before returning
+    /// `error.DepthLimitExceeded`. The upstream protobuf JSON parsers use a
+    /// recursion limit of 100 (`json/internal/lexer.h`), and the conformance
+    /// suite requires 200-level Struct/Value/ListValue nesting to fail.
+    max_depth: u32 = 100,
 };
 
 /// Parse one complete JSON document into a `Value` tree.
@@ -132,12 +132,11 @@ const Parser = struct {
     }
 
     fn parseValue(self: *Parser, depth: u32) ParseError!Value {
-        if (depth > self.max_depth) return error.DepthLimitExceeded;
         self.skipWhitespace();
         if (self.index >= self.text.len) return error.UnexpectedEndOfInput;
         return switch (self.text[self.index]) {
-            '{' => self.parseObject(depth),
-            '[' => self.parseArray(depth),
+            '{' => self.parseObject(depth + 1),
+            '[' => self.parseArray(depth + 1),
             '"' => .{ .string = try self.parseString() },
             't' => blk: {
                 try self.expectKeyword("true");
@@ -163,6 +162,7 @@ const Parser = struct {
     }
 
     fn parseObject(self: *Parser, depth: u32) ParseError!Value {
+        if (depth > self.max_depth) return error.DepthLimitExceeded;
         self.index += 1; // '{'
         self.skipWhitespace();
         var entries: std.ArrayListUnmanaged(Value.Entry) = .empty;
@@ -198,7 +198,7 @@ const Parser = struct {
             if (self.index >= self.text.len) return error.UnexpectedEndOfInput;
             if (self.text[self.index] != ':') return error.SyntaxError;
             self.index += 1;
-            const value = try self.parseValue(depth + 1);
+            const value = try self.parseValue(depth);
             try entries.append(self.allocator, .{ .key = key, .value = value });
 
             self.skipWhitespace();
@@ -215,6 +215,7 @@ const Parser = struct {
     }
 
     fn parseArray(self: *Parser, depth: u32) ParseError!Value {
+        if (depth > self.max_depth) return error.DepthLimitExceeded;
         self.index += 1; // '['
         self.skipWhitespace();
         var items: std.ArrayListUnmanaged(Value) = .empty;
@@ -223,7 +224,7 @@ const Parser = struct {
             return .{ .array = .{ .items = try items.toOwnedSlice(self.allocator) } };
         }
         while (true) {
-            const value = try self.parseValue(depth + 1);
+            const value = try self.parseValue(depth);
             try items.append(self.allocator, value);
             self.skipWhitespace();
             if (self.index >= self.text.len) return error.UnexpectedEndOfInput;
@@ -407,4 +408,22 @@ test "reject duplicate keys and malformed input" {
     try std.testing.expectError(error.UnexpectedEndOfInput, parse(arena.allocator(), "{\"a\":", .{}));
     try std.testing.expectError(error.SyntaxError, parse(arena.allocator(), "\"\\ud800\"", .{}));
     try std.testing.expectError(error.DepthLimitExceeded, parse(arena.allocator(), "[[[0]]]", .{ .max_depth = 2 }));
+}
+
+test "default nesting limit matches upstream protobuf JSON parsers" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const ok = try allocator.alloc(u8, 201);
+    @memset(ok[0..100], '[');
+    ok[100] = '0';
+    @memset(ok[101..], ']');
+    _ = try parse(allocator, ok, .{});
+
+    const bad = try allocator.alloc(u8, 203);
+    @memset(bad[0..101], '[');
+    bad[101] = '0';
+    @memset(bad[102..], ']');
+    try std.testing.expectError(error.DepthLimitExceeded, parse(allocator, bad, .{}));
 }

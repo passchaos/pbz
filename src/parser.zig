@@ -177,6 +177,7 @@ pub const Parser = struct {
         try self.validateFieldOptionApplicabilities();
         try self.validateFeatureSemantics();
         try self.validateNamingStyle();
+        try self.validateProtoLimits();
         return self.file;
     }
 
@@ -599,7 +600,7 @@ pub const Parser = struct {
                 const option_start = self.previous_end;
                 const option = try self.parseOptionAssignmentStatement();
                 try self.appendFieldOption(&enumeration.options, option);
-                try self.applyFeatureOption(&enumeration.features, option);
+                try self.applyFeatureOption(&enumeration.features, option, .enumeration);
                 const path = try self.childFieldPath(source_path, 3);
                 defer self.allocator.free(path);
                 try self.addSourceLocation(path, option_start, self.previousEnd());
@@ -653,7 +654,7 @@ pub const Parser = struct {
                 const option_start = self.previous_end;
                 const option = try self.parseOptionAssignmentStatement();
                 try self.appendFieldOption(&service.options, option);
-                try self.applyFeatureOption(&service.features, option);
+                try self.applyFeatureOption(&service.features, option, .service);
                 const path = try self.childFieldPath(source_path, 3);
                 defer self.allocator.free(path);
                 try self.addSourceLocation(path, option_start, self.previousEnd());
@@ -691,7 +692,7 @@ pub const Parser = struct {
                     const option_start = self.previous_end;
                     const option = try self.parseOptionAssignmentStatement();
                     try self.appendFieldOption(&method.options, option);
-                    try self.applyFeatureOption(&method.features, option);
+                    try self.applyFeatureOption(&method.features, option, .method);
                     const path = try self.childFieldPath(method_path, 4);
                     defer self.allocator.free(path);
                     try self.addSourceLocation(path, option_start, self.previousEnd());
@@ -713,7 +714,7 @@ pub const Parser = struct {
                 const option = try self.parseOptionAssignmentStatement();
                 const oneof = &message.oneofs.items[message.oneofs.items.len - 1];
                 try self.appendFieldOption(&oneof.options, option);
-                try self.applyFeatureOption(&oneof.features, option);
+                try self.applyFeatureOption(&oneof.features, option, .oneof);
                 const oneof_index: i32 = @intCast(message.oneofs.items.len - 1);
                 const oneof_path = try self.childPath(message_path, 8, oneof_index);
                 defer self.allocator.free(oneof_path);
@@ -951,7 +952,7 @@ pub const Parser = struct {
                 };
                 field.feature_support = try self.parseFeatureSupportAggregate(aggregate);
             }
-            try self.applyFeatureOption(&field.features, option);
+            try self.applyFeatureOption(&field.features, option, .field);
             if (std.mem.eql(u8, leaf, "repeated_field_encoding")) {
                 if (schema.optionAsIdentifier(option.value)) |ident| {
                     if (std.ascii.eqlIgnoreCase(ident, "PACKED")) field.packed_override = true;
@@ -966,7 +967,7 @@ pub const Parser = struct {
         if (std.mem.eql(u8, leaf, "map_entry")) {
             return error.InvalidFieldType;
         }
-        try self.applyFeatureOption(&message.features, option);
+        try self.applyFeatureOption(&message.features, option, .message);
     }
 
     fn applyEnumValueOptions(self: *Parser, enum_value: *schema.EnumValueDescriptor) Error!void {
@@ -979,7 +980,7 @@ pub const Parser = struct {
                 };
                 enum_value.feature_support = try self.parseFeatureSupportAggregate(aggregate);
             }
-            try self.applyFeatureOption(&enum_value.features, option);
+            try self.applyFeatureOption(&enum_value.features, option, .enum_entry);
         }
     }
 
@@ -987,11 +988,22 @@ pub const Parser = struct {
         if (isFeatureOption(option.name)) {
             if (self.file.syntax != .editions) return error.InvalidSyntax;
             try self.validateFeatureOptionEdition(option);
+            try validateFeatureOptionTarget(option, .file);
             try applyFeatureOptionValue(&self.file.features, option);
             try self.appendFieldOption(&self.file.options, option);
         } else {
+            try self.validateFileOptionEdition(option);
             try self.file.addOption(option);
         }
+    }
+
+    fn validateFileOptionEdition(self: *const Parser, option: schema.FieldOption) Error!void {
+        // descriptor.proto marks cc_enable_arenas with
+        // feature_support.edition_removed = EDITION_2026.
+        if (self.file.syntax != .editions) return;
+        if (@intFromEnum(self.file.edition) < @intFromEnum(schema.Edition.edition_2026)) return;
+        const leaf = optionLeaf(option.name);
+        if (std.mem.eql(u8, leaf, "cc_enable_arenas")) return error.InvalidFieldType;
     }
 
     fn validateFeatureOptionEdition(self: *const Parser, option: schema.FieldOption) Error!void {
@@ -1003,10 +1015,11 @@ pub const Parser = struct {
         }
     }
 
-    fn applyFeatureOption(self: *Parser, target: *?schema.FeatureSet, option: schema.FieldOption) Error!void {
+    fn applyFeatureOption(self: *Parser, target: *?schema.FeatureSet, option: schema.FieldOption, feature_target: FeatureTarget) Error!void {
         if (!isFeatureOption(option.name)) return;
         if (self.file.syntax != .editions) return error.InvalidSyntax;
         try self.validateFeatureOptionEdition(option);
+        try validateFeatureOptionTarget(option, feature_target);
         var features = target.* orelse schema.FeatureSet.defaults(self.file.syntax);
         try applyFeatureOptionValue(&features, option);
         target.* = features;
@@ -1019,6 +1032,7 @@ pub const Parser = struct {
     fn applyFeatureOptionValue(features: *schema.FeatureSet, option: schema.FieldOption) ParseError!void {
         const leaf = optionLeaf(option.name);
         const ident = schema.optionAsIdentifier(option.value) orelse return error.InvalidFieldType;
+        features.markPresent(leaf);
         if (std.mem.eql(u8, leaf, "field_presence")) {
             if (std.ascii.eqlIgnoreCase(ident, "EXPLICIT")) features.field_presence = .explicit else if (std.ascii.eqlIgnoreCase(ident, "IMPLICIT")) features.field_presence = .implicit else if (std.ascii.eqlIgnoreCase(ident, "LEGACY_REQUIRED")) features.field_presence = .legacy_required else return error.InvalidFieldType;
         } else if (std.mem.eql(u8, leaf, "enum_type")) {
@@ -1180,6 +1194,8 @@ pub const Parser = struct {
                 } else return error.InvalidFieldType;
             } else if (std.mem.startsWith(u8, option.name, "features.")) {
                 if (self.file.syntax != .editions) return error.InvalidSyntax;
+                try self.validateFeatureOptionEdition(option);
+                try validateFeatureOptionTarget(option, .extension_range);
                 var features = range.features orelse schema.FeatureSet.defaults(self.file.syntax);
                 try applyFeatureOptionValue(&features, option);
                 range.features = features;
@@ -1411,7 +1427,50 @@ pub const Parser = struct {
     for (self.file.messages.items) |*message| try validateMessageNaming(message, file_style);
     for (self.file.enums.items) |*enumeration| try validateEnumNaming(enumeration, file_style);
     for (self.file.services.items) |*service| try validateServiceNaming(service, file_style);
-    for (self.file.extensions.items) |*field| try validateFieldNaming(field, file_style);
+    for (self.file.extensions.items) |*field| try validateFieldNaming(field, file_style, null);
+}
+
+    fn validateProtoLimits(self: *Parser) ParseError!void {
+        if (self.file.syntax != .editions) return;
+        const file_limits = self.file.features.enforce_proto_limits;
+        for (self.file.messages.items) |*message| try validateMessageProtoLimits(message, file_limits);
+        for (self.file.enums.items) |*enumeration| try validateEnumProtoLimits(enumeration, file_limits);
+    }
+
+const FeatureTarget = enum {
+    file,
+    extension_range,
+    message,
+    field,
+    oneof,
+    enumeration,
+    enum_entry,
+    service,
+    method,
+};
+
+/// Feature targets from descriptor.proto; protoc rejects a feature set on an
+/// entity type it does not target (for example file-level enforce_proto_limits).
+fn validateFeatureOptionTarget(option: schema.FieldOption, target: FeatureTarget) ParseError!void {
+    const leaf = optionLeaf(option.name);
+    const allowed = if (std.mem.eql(u8, leaf, "field_presence") or
+        std.mem.eql(u8, leaf, "repeated_field_encoding") or
+        std.mem.eql(u8, leaf, "utf8_validation") or
+        std.mem.eql(u8, leaf, "message_encoding"))
+        target == .file or target == .field
+    else if (std.mem.eql(u8, leaf, "enum_type"))
+        target == .file or target == .enumeration
+    else if (std.mem.eql(u8, leaf, "json_format"))
+        target == .file or target == .message or target == .enumeration
+    else if (std.mem.eql(u8, leaf, "enforce_naming_style"))
+        true
+    else if (std.mem.eql(u8, leaf, "default_symbol_visibility"))
+        target == .file
+    else if (std.mem.eql(u8, leaf, "enforce_proto_limits"))
+        target == .enumeration or target == .message or target == .field or target == .oneof
+    else
+        false;
+    if (!allowed) return error.InvalidFieldType;
 }
 
 fn effectiveNamingStyle(features: ?schema.FeatureSet, inherited: schema.FeatureSet.EnforceNamingStyle) schema.FeatureSet.EnforceNamingStyle {
@@ -1429,19 +1488,92 @@ fn validatePackageNaming(package: []const u8) ParseError!void {
 fn validateMessageNaming(message: *const schema.MessageDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
     const style = effectiveNamingStyle(message.features, inherited);
     if (style != .style_legacy and !isTitleCaseName(message.name)) return error.InvalidFieldType;
-    for (message.fields.items) |*field| try validateFieldNaming(field, style);
+    for (message.fields.items) |*field| try validateFieldNaming(field, style, message);
     for (message.oneofs.items) |*oneof| {
         const oneof_style = effectiveNamingStyle(oneof.features, style);
         if (oneof_style != .style_legacy and !isLowerSnakeCaseName(oneof.name)) return error.InvalidFieldType;
+        if (oneof_style == .style2026 and !isValidFieldNonCollisionName(message, oneof.name)) return error.InvalidFieldType;
     }
     for (message.messages.items) |*nested| try validateMessageNaming(nested, style);
     for (message.enums.items) |*enumeration| try validateEnumNaming(enumeration, style);
-    for (message.extensions.items) |*field| try validateFieldNaming(field, style);
+    for (message.extensions.items) |*field| try validateFieldNaming(field, style, message);
 }
 
-fn validateFieldNaming(field: *const schema.FieldDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
+fn validateFieldNaming(field: *const schema.FieldDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle, message: ?*const schema.MessageDescriptor) ParseError!void {
     const style = effectiveNamingStyle(field.features, inherited);
     if (style != .style_legacy and !isLowerSnakeCaseName(field.name)) return error.InvalidFieldType;
+    if (style == .style2026) {
+        if (message) |containing| {
+            if (!isValidFieldNonCollisionName(containing, field.name)) return error.InvalidFieldType;
+        }
+    }
+}
+
+/// STYLE2026 rejects generated-code collisions: a field or oneof named
+/// `has_x`/`get_x`/`set_x`/`clear_x`/`x_value` when `x` is also a field or
+/// oneof of the same message (matching DescriptorBuilder::ValidateNamingStyle).
+fn isValidFieldNonCollisionName(message: *const schema.MessageDescriptor, name: []const u8) bool {
+    const prefixes = [_][]const u8{ "has_", "get_", "set_", "clear_" };
+    for (prefixes) |prefix| {
+        if (std.mem.startsWith(u8, name, prefix) and messageHasFieldOrOneofNamed(message, name[prefix.len..])) return false;
+    }
+    const suffixes = [_][]const u8{"_value"};
+    for (suffixes) |suffix| {
+        if (std.mem.endsWith(u8, name, suffix) and messageHasFieldOrOneofNamed(message, name[0 .. name.len - suffix.len])) return false;
+    }
+    return true;
+}
+
+fn messageHasFieldOrOneofNamed(message: *const schema.MessageDescriptor, name: []const u8) bool {
+    for (message.fields.items) |field| {
+        if (std.mem.eql(u8, field.name, name)) return true;
+    }
+    for (message.oneofs.items) |oneof| {
+        if (std.mem.eql(u8, oneof.name, name)) return true;
+    }
+    return false;
+}
+
+const proto_limits_2026_fields_per_message: usize = 1500;
+const proto_limits_2026_oneofs_per_message: usize = 1000;
+const proto_limits_2026_fields_per_oneof: usize = 1200;
+const proto_limits_2026_values_per_enum: usize = 1700;
+
+/// Edition-2026 PROTO_LIMITS2026 validation, matching protoc 36.x
+/// DescriptorBuilder::ValidateProtoLimits. The effective feature inherits from
+/// the enclosing message/file, so a message-level opt-out covers its children.
+fn validateMessageProtoLimits(message: *const schema.MessageDescriptor, inherited: schema.FeatureSet.EnforceProtoLimits) ParseError!void {
+    const limits = effectiveProtoLimits(message.features, inherited);
+    if (limits != .legacy_no_explicit_limits) {
+        if (message.fields.items.len > proto_limits_2026_fields_per_message) return error.InvalidFieldType;
+        var real_oneofs: usize = 0;
+        for (message.oneofs.items) |*oneof| {
+            if (!message.oneofIsSynthetic(oneof)) real_oneofs += 1;
+        }
+        if (real_oneofs > proto_limits_2026_oneofs_per_message) return error.InvalidFieldType;
+    }
+    for (message.oneofs.items) |*oneof| {
+        const oneof_limits = effectiveProtoLimits(oneof.features, limits);
+        if (oneof_limits == .legacy_no_explicit_limits) continue;
+        var field_count: usize = 0;
+        for (message.fields.items) |*field| {
+            if (field.oneof_name) |name| {
+                if (std.mem.eql(u8, name, oneof.name)) field_count += 1;
+            }
+        }
+        if (field_count > proto_limits_2026_fields_per_oneof) return error.InvalidFieldType;
+    }
+    for (message.messages.items) |*nested| try validateMessageProtoLimits(nested, limits);
+    for (message.enums.items) |*enumeration| try validateEnumProtoLimits(enumeration, limits);
+}
+
+fn validateEnumProtoLimits(enumeration: *const schema.EnumDescriptor, inherited: schema.FeatureSet.EnforceProtoLimits) ParseError!void {
+    const limits = effectiveProtoLimits(enumeration.features, inherited);
+    if (limits != .legacy_no_explicit_limits and enumeration.values.items.len > proto_limits_2026_values_per_enum) return error.InvalidFieldType;
+}
+
+fn effectiveProtoLimits(features: ?schema.FeatureSet, inherited: schema.FeatureSet.EnforceProtoLimits) schema.FeatureSet.EnforceProtoLimits {
+    return if (features) |value| value.enforce_proto_limits else inherited;
 }
 
 fn validateEnumNaming(enumeration: *const schema.EnumDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
@@ -1531,12 +1663,12 @@ fn validateMessageFieldOptionApplicabilities(self: *Parser, message: *schema.Mes
         }
         if (field.cardinality == .repeated or field.kind == .map or field.oneof_name != null or field.proto3_optional) return;
         if (field.kind == .message or field.kind == .group) return;
-        const features = field.features orelse self.file.features;
+        const features = schema.FeatureSet.effective(field.features, self.file.features);
         if (features.field_presence != .implicit) return;
         if (field.default_value != null) return error.InvalidDefault;
         if (field.kind == .enumeration) {
             const enumeration = self.findEnumDescriptor(field.kind.enumeration, context) orelse return;
-            const enum_features = enumeration.features orelse self.file.features;
+            const enum_features = schema.FeatureSet.effective(enumeration.features, self.file.features);
             if (enum_features.enum_type == .closed) return error.InvalidFieldType;
         }
     }
@@ -3651,13 +3783,13 @@ test "parser validates extension field numbers against extension ranges" {
 test "parser preserves extension range declarations verification and features" {
     const allocator = std.testing.allocator;
     var file = try Parser.parse(allocator,
-        \\edition = "2023";
+        \\edition = "2024";
         \\package demo;
         \\message Host {
         \\  extensions 100 to max [
         \\    declaration = { number: 100 full_name: ".demo.ext" type: ".demo.Ext" repeated: true },
         \\    verification = DECLARATION,
-        \\    features.repeated_field_encoding = PACKED
+        \\    features.enforce_naming_style = STYLE_LEGACY
         \\  ];
         \\}
         \\message Ext {}
@@ -3680,11 +3812,11 @@ test "parser preserves extension range declarations verification and features" {
 test "parser copies trailing extension range options across same statement" {
     const allocator = std.testing.allocator;
     var file = try Parser.parse(allocator,
-        \\edition = "2023";
+        \\edition = "2024";
         \\message Host {
         \\  extensions 100 to 101, 200 to 201 [
         \\    verification = UNVERIFIED,
-        \\    features.repeated_field_encoding = EXPANDED
+        \\    features.enforce_naming_style = STYLE_LEGACY
         \\  ];
         \\}
     );
@@ -3694,7 +3826,7 @@ test "parser copies trailing extension range options across same statement" {
     try std.testing.expectEqual(@as(usize, 2), host.extension_ranges.items.len);
     for (host.extension_ranges.items) |range| {
         try std.testing.expectEqual(schema.ExtensionRangeVerification.unverified, range.verification.?);
-        try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.expanded, range.features.?.repeated_field_encoding);
+        try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style_legacy, range.features.?.enforce_naming_style);
     }
     try expectLocationPath(&file, &.{ 4, 0, 5, 0, 3 });
     try expectLocationPath(&file, &.{ 4, 0, 5, 1, 3 });
@@ -3739,10 +3871,10 @@ test "parser applies feature options across declaration scopes" {
         \\edition = "2026";
         \\option features.json_format = LEGACY_BEST_EFFORT;
         \\message M {
-        \\  option features.message_encoding = DELIMITED;
+        \\  option features.enforce_naming_style = STYLE_LEGACY;
         \\  repeated int32 values = 1 [features.repeated_field_encoding = EXPANDED];
         \\  oneof pick {
-        \\    option features.field_presence = EXPLICIT;
+        \\    option features.enforce_naming_style = STYLE2024;
         \\    string name = 2;
         \\  }
         \\}
@@ -3756,7 +3888,7 @@ test "parser applies feature options across declaration scopes" {
         \\service S {
         \\  option features.enforce_naming_style = STYLE2024;
         \\  rpc Do (M) returns (M) {
-        \\    option features.enforce_proto_limits = PROTO_LIMITS2026;
+        \\    option features.enforce_naming_style = STYLE_LEGACY;
         \\  }
         \\}
     );
@@ -3764,11 +3896,11 @@ test "parser applies feature options across declaration scopes" {
 
     try std.testing.expectEqual(schema.FeatureSet.JsonFormat.legacy_best_effort, file.features.json_format);
     const message = file.findMessage("M").?;
-    try std.testing.expectEqual(schema.FeatureSet.MessageEncoding.delimited, message.features.?.message_encoding);
+    try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style_legacy, message.features.?.enforce_naming_style);
     const field = message.findField("values").?;
     try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.expanded, field.features.?.repeated_field_encoding);
     try std.testing.expect(!field.resolvedPacked(&file));
-    try std.testing.expectEqual(schema.FeatureSet.FieldPresence.explicit, message.oneofs.items[0].features.?.field_presence);
+    try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style2024, message.oneofs.items[0].features.?.enforce_naming_style);
     const enumeration = file.findEnum("E").?;
     try std.testing.expectEqual(schema.FeatureSet.EnumType.closed, enumeration.features.?.enum_type);
     try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style2026, enumeration.values.items[0].features.?.enforce_naming_style);
@@ -3776,7 +3908,7 @@ test "parser applies feature options across declaration scopes" {
     try std.testing.expectEqualStrings("removed enum value", enumeration.values.items[0].feature_support.?.removal_error);
     const service = file.services.items[0];
     try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style2024, service.features.?.enforce_naming_style);
-    try std.testing.expectEqual(schema.FeatureSet.EnforceProtoLimits.proto_limits2026, service.methods.items[0].features.?.enforce_proto_limits);
+    try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style_legacy, service.methods.items[0].features.?.enforce_naming_style);
 }
 
 test "parser enforces editions STYLE2024 naming" {
@@ -3848,6 +3980,234 @@ test "parser enforces editions STYLE2024 naming" {
         \\message lower_name { int32 camelCase = 1; }
     );
     defer legacy.deinit();
+}
+
+test "parser applies edition 2024 and 2026 feature defaults" {
+    const allocator = std.testing.allocator;
+
+    // Edition 2024 enables STYLE2024 and EXPORT_TOP_LEVEL without an explicit option.
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2024";
+        \\package demo;
+        \\message lower_name {}
+    ));
+    var v2024 = try Parser.parse(allocator,
+        \\edition = "2024";
+        \\package demo;
+        \\message GoodName { int32 good_field = 1; }
+    );
+    defer v2024.deinit();
+    try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style2024, v2024.features.enforce_naming_style);
+    try std.testing.expectEqual(schema.FeatureSet.DefaultSymbolVisibility.export_top_level, v2024.features.default_symbol_visibility);
+    try std.testing.expectEqual(schema.FeatureSet.EnforceProtoLimits.legacy_no_explicit_limits, v2024.features.enforce_proto_limits);
+
+    // Edition 2026 also enables STYLE2026 and PROTO_LIMITS2026.
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\message lower_name {}
+    ));
+    var v2026 = try Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\message GoodName { int32 good_field = 1; }
+    );
+    defer v2026.deinit();
+    try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style2026, v2026.features.enforce_naming_style);
+    try std.testing.expectEqual(schema.FeatureSet.DefaultSymbolVisibility.strict, v2026.features.default_symbol_visibility);
+    try std.testing.expectEqual(schema.FeatureSet.EnforceProtoLimits.proto_limits2026, v2026.features.enforce_proto_limits);
+
+    // Explicit options still override the edition defaults.
+    var legacy = try Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\option features.enforce_naming_style = STYLE_LEGACY;
+        \\message lower_name { int32 camelCase = 1; }
+    );
+    defer legacy.deinit();
+}
+
+test "parser enforces STYLE2026 generated-name collision rules" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\message GoodName {
+        \\  int32 foo = 1;
+        \\  int32 has_foo = 2;
+        \\}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\message GoodName {
+        \\  int32 foo = 1;
+        \\  int32 get_foo = 2;
+        \\}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\message GoodName {
+        \\  int32 foo = 1;
+        \\  int32 foo_value = 2;
+        \\}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\message GoodName {
+        \\  int32 foo = 1;
+        \\  oneof foo_value { int32 bar = 2; }
+        \\}
+    ));
+    // STYLE2024 does not include the collision rule.
+    var v2024 = try Parser.parse(allocator,
+        \\edition = "2024";
+        \\package demo;
+        \\message GoodName {
+        \\  int32 foo = 1;
+        \\  int32 has_foo = 2;
+        \\}
+    );
+    defer v2024.deinit();
+    // A field without the colliding peer is fine under STYLE2026.
+    var v2026 = try Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\message GoodName {
+        \\  int32 has_foo = 1;
+        \\  int32 foo_value = 2;
+        \\}
+    );
+    defer v2026.deinit();
+}
+
+test "parser enforces edition 2026 proto limits" {
+    const allocator = std.testing.allocator;
+
+    var fields: std.ArrayListUnmanaged(u8) = .empty;
+    defer fields.deinit(allocator);
+    try fields.appendSlice(allocator, "edition = \"2026\";\npackage demo;\nmessage GoodName {\n");
+    for (0..1501) |i| {
+        const line = try std.fmt.allocPrint(allocator, "  int32 f{d} = {d};\n", .{ i, i + 1 });
+        defer allocator.free(line);
+        try fields.appendSlice(allocator, line);
+    }
+    try fields.appendSlice(allocator, "}\n");
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator, fields.items));
+
+    // A message-level opt-out restores the pre-2026 behavior.
+    var opted_out: std.ArrayListUnmanaged(u8) = .empty;
+    defer opted_out.deinit(allocator);
+    try opted_out.appendSlice(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\message GoodName {
+        \\  option features.enforce_proto_limits = LEGACY_NO_EXPLICIT_LIMITS;
+    );
+    for (0..1501) |i| {
+        const line = try std.fmt.allocPrint(allocator, "  int32 f{d} = {d};\n", .{ i, i + 1 });
+        defer allocator.free(line);
+        try opted_out.appendSlice(allocator, line);
+    }
+    try opted_out.appendSlice(allocator, "}\n");
+    var allowed = try Parser.parse(allocator, opted_out.items);
+    defer allowed.deinit();
+
+    var values: std.ArrayListUnmanaged(u8) = .empty;
+    defer values.deinit(allocator);
+    try values.appendSlice(allocator, "edition = \"2026\";\npackage demo;\nenum BigEnum {\n");
+    for (0..1701) |i| {
+        const line = try std.fmt.allocPrint(allocator, "  BIG_ENUM_V{d} = {d};\n", .{ i, i });
+        defer allocator.free(line);
+        try values.appendSlice(allocator, line);
+    }
+    try values.appendSlice(allocator, "}\n");
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator, values.items));
+
+    var oneofs: std.ArrayListUnmanaged(u8) = .empty;
+    defer oneofs.deinit(allocator);
+    try oneofs.appendSlice(allocator, "edition = \"2026\";\npackage demo;\nmessage GoodName {\n");
+    for (0..1001) |i| {
+        const line = try std.fmt.allocPrint(allocator, "  oneof o{d} {{ int32 f{d} = {d}; }}\n", .{ i, i, i + 1 });
+        defer allocator.free(line);
+        try oneofs.appendSlice(allocator, line);
+    }
+    try oneofs.appendSlice(allocator, "}\n");
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator, oneofs.items));
+
+    var oneof_fields: std.ArrayListUnmanaged(u8) = .empty;
+    defer oneof_fields.deinit(allocator);
+    try oneof_fields.appendSlice(allocator, "edition = \"2026\";\npackage demo;\nmessage GoodName {\n  oneof pick {\n");
+    for (0..1201) |i| {
+        const line = try std.fmt.allocPrint(allocator, "    int32 f{d} = {d};\n", .{ i, i + 1 });
+        defer allocator.free(line);
+        try oneof_fields.appendSlice(allocator, line);
+    }
+    try oneof_fields.appendSlice(allocator, "  }\n}\n");
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator, oneof_fields.items));
+}
+
+test "parser rejects feature options on unsupported targets and removed options" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\option features.enforce_proto_limits = LEGACY_NO_EXPLICIT_LIMITS;
+        \\message GoodName { int32 x = 1; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\message GoodName {
+        \\  option features.field_presence = IMPLICIT;
+        \\  int32 x = 1;
+        \\}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\message GoodName {
+        \\  int32 x = 1;
+        \\  extensions 100 to max [features.repeated_field_encoding = PACKED];
+        \\}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\option cc_enable_arenas = true;
+        \\message GoodName { int32 x = 1; }
+    ));
+    var v2024 = try Parser.parse(allocator,
+        \\edition = "2024";
+        \\package demo;
+        \\option cc_enable_arenas = true;
+        \\message GoodName { int32 x = 1; }
+    );
+    defer v2024.deinit();
+}
+
+test "parser resolves feature inheritance for partial feature sets" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\edition = "2023";
+        \\package demo;
+        \\option features.repeated_field_encoding = EXPANDED;
+        \\message M {
+        \\  int32 plain = 1;
+        \\  repeated int32 values = 2 [features.field_presence = IMPLICIT];
+        \\}
+    );
+    defer file.deinit();
+    const message = file.findMessage("M").?;
+    const plain = message.findField("plain").?;
+    const values = message.findField("values").?;
+    try std.testing.expect(plain.hasPresence(&file));
+    try std.testing.expectEqual(schema.FeatureSet.FieldPresence.implicit, values.fieldPresence(&file));
+    try std.testing.expect(!values.resolvedPacked(&file));
+    try std.testing.expect(values.features.?.hasPresent("field_presence"));
+    try std.testing.expect(!values.features.?.hasPresent("repeated_field_encoding"));
 }
 
 test "parser rejects editions group syntax" {

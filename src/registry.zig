@@ -11,8 +11,7 @@ const JsonNameOwner = struct {
 };
 
 fn messageJsonFormat(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) schema.FeatureSet.JsonFormat {
-    if (message.features) |features| return features.json_format;
-    return file.features.json_format;
+    return schema.FeatureSet.effective(message.features, file.features).json_format;
 }
 
 pub const max_import_chain_depth = 32;
@@ -202,15 +201,15 @@ pub const Registry = struct {
     }
 
     fn validateNoJsonNameConflicts(self: *const Registry, file: *const schema.FileDescriptor) Error!void {
-        for (file.messages.items) |*message| try self.validateMessageJsonNameConflicts(file, message);
+        for (file.messages.items) |*message| try self.validateMessageJsonNameConflicts(file, message, file.features.json_format);
     }
 
-    fn validateMessageJsonNameConflicts(self: *const Registry, file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) Error!void {
+    fn validateMessageJsonNameConflicts(self: *const Registry, file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, inherited_json_format: schema.FeatureSet.JsonFormat) Error!void {
+        const json_format = schema.FeatureSet.effective(message.features, .{ .json_format = inherited_json_format }).json_format;
         if (message.deprecatedLegacyJsonFieldConflicts()) {
-            for (message.messages.items) |*nested| try self.validateMessageJsonNameConflicts(file, nested);
+            for (message.messages.items) |*nested| try self.validateMessageJsonNameConflicts(file, nested, json_format);
             return;
         }
-        const json_format = messageJsonFormat(file, message);
 
         var default_names = std.StringHashMap(void).init(self.allocator);
         defer default_names.deinit();
@@ -254,7 +253,7 @@ pub const Registry = struct {
             }
         }
 
-        for (message.messages.items) |*nested| try self.validateMessageJsonNameConflicts(file, nested);
+        for (message.messages.items) |*nested| try self.validateMessageJsonNameConflicts(file, nested, json_format);
     }
 
     fn validateNoExtensionConflicts(self: *const Registry, file: *const schema.FileDescriptor) Error!void {

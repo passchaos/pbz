@@ -516,23 +516,19 @@ pub const FieldDescriptor = struct {
     pub fn hasPresence(self: FieldDescriptor, file: *const FileDescriptor) bool {
         if (self.isRequired() or self.proto3_optional or self.oneof_name != null or self.kind == .message or self.kind == .group) return true;
         if (self.cardinality == .repeated or self.kind == .map) return false;
-        if (self.features) |features| return features.field_presence != .implicit;
-        return file.features.field_presence != .implicit;
+        return FeatureSet.effective(self.features, file.features).field_presence != .implicit;
     }
 
     pub fn fieldPresence(self: FieldDescriptor, file: *const FileDescriptor) FeatureSet.FieldPresence {
-        if (self.features) |features| return features.field_presence;
-        return file.features.field_presence;
+        return FeatureSet.effective(self.features, file.features).field_presence;
     }
 
     pub fn utf8Validation(self: FieldDescriptor, file: *const FileDescriptor) FeatureSet.Utf8Validation {
-        if (self.features) |features| return features.utf8_validation;
-        return file.features.utf8_validation;
+        return FeatureSet.effective(self.features, file.features).utf8_validation;
     }
 
     pub fn messageEncoding(self: FieldDescriptor, file: *const FileDescriptor) FeatureSet.MessageEncoding {
-        if (self.features) |features| return features.message_encoding;
-        return file.features.message_encoding;
+        return FeatureSet.effective(self.features, file.features).message_encoding;
     }
 
     pub fn hasExplicitJsonName(self: FieldDescriptor) bool {
@@ -564,12 +560,7 @@ pub const FieldDescriptor = struct {
     pub fn resolvedPacked(self: FieldDescriptor, file: *const FileDescriptor) bool {
         if (!self.isPackable()) return false;
         if (self.packed_override) |is_packed| return is_packed;
-        if (self.features) |features| return features.repeated_field_encoding == FeatureSet.RepeatedFieldEncoding.packed_encoding;
-        return switch (file.syntax) {
-            .proto2 => false,
-            .proto3 => true,
-            .editions => file.features.repeated_field_encoding == FeatureSet.RepeatedFieldEncoding.packed_encoding,
-        };
+        return FeatureSet.effective(self.features, file.features).repeated_field_encoding == FeatureSet.RepeatedFieldEncoding.packed_encoding;
     }
 };
 
@@ -846,8 +837,7 @@ pub const EnumDescriptor = struct {
     }
 
     pub fn enumType(self: *const EnumDescriptor, file: *const FileDescriptor) FeatureSet.EnumType {
-        if (self.features) |features| return features.enum_type;
-        return file.features.enum_type;
+        return FeatureSet.effective(self.features, file.features).enum_type;
     }
 
     pub fn deprecatedLegacyJsonFieldConflicts(self: *const EnumDescriptor) bool {
@@ -1259,6 +1249,10 @@ pub const FeatureSet = struct {
     enforce_naming_style: EnforceNamingStyle = .style_legacy,
     default_symbol_visibility: DefaultSymbolVisibility = .export_all,
     enforce_proto_limits: EnforceProtoLimits = .legacy_no_explicit_limits,
+    /// Bitmask of features explicitly set on this descriptor (bit N-1 for
+    /// FeatureSet field N). Resolved edition defaults leave it at zero. This is
+    /// inheritance metadata: it is not part of `eql` or serialization.
+    present: u9 = 0,
 
     pub const FieldPresence = enum { explicit, implicit, legacy_required };
     pub const EnumType = enum { open, closed };
@@ -1296,6 +1290,25 @@ pub const FeatureSet = struct {
         };
     }
 
+    /// Edition-specific defaults from descriptor.proto's `edition_defaults`:
+    /// edition 2024 defaults to STYLE2024 naming and EXPORT_TOP_LEVEL symbol
+    /// visibility; edition 2026 defaults to STYLE2026 naming, STRICT
+    /// visibility, and PROTO_LIMITS2026. Later (UNSTABLE/test) editions inherit
+    /// the closest lower defaults, matching FeatureResolver.
+    pub fn defaultsForEdition(edition: Edition) FeatureSet {
+        var features = defaults(.editions);
+        if (@intFromEnum(edition) >= @intFromEnum(Edition.edition_2024)) {
+            features.enforce_naming_style = .style2024;
+            features.default_symbol_visibility = .export_top_level;
+        }
+        if (@intFromEnum(edition) >= @intFromEnum(Edition.edition_2026)) {
+            features.enforce_naming_style = .style2026;
+            features.default_symbol_visibility = .strict;
+            features.enforce_proto_limits = .proto_limits2026;
+        }
+        return features;
+    }
+
     pub fn eql(self: FeatureSet, other: FeatureSet) bool {
         return self.field_presence == other.field_presence and
             self.enum_type == other.enum_type and
@@ -1308,6 +1321,51 @@ pub const FeatureSet = struct {
             self.enforce_proto_limits == other.enforce_proto_limits;
     }
 
+    /// Marks a feature as explicitly set. `present` is metadata used to resolve
+    /// inheritance; it is not part of equality or serialization.
+    pub fn markPresent(self: *FeatureSet, leaf: []const u8) void {
+        if (featureFieldNumber(leaf)) |number| self.present |= @as(u9, 1) << @intCast(number - 1);
+    }
+
+    pub fn hasPresent(self: FeatureSet, leaf: []const u8) bool {
+        const number = featureFieldNumber(leaf) orelse return false;
+        return (self.present & (@as(u9, 1) << @intCast(number - 1))) != 0;
+    }
+
+    /// Resolves protobuf feature inheritance: explicitly set fields win, and
+    /// everything else comes from the nearest enclosing scope.
+    pub fn mergeInherited(self: FeatureSet, inherited: FeatureSet) FeatureSet {
+        var result = inherited;
+        if (self.hasPresent("field_presence")) result.field_presence = self.field_presence;
+        if (self.hasPresent("enum_type")) result.enum_type = self.enum_type;
+        if (self.hasPresent("repeated_field_encoding")) result.repeated_field_encoding = self.repeated_field_encoding;
+        if (self.hasPresent("utf8_validation")) result.utf8_validation = self.utf8_validation;
+        if (self.hasPresent("message_encoding")) result.message_encoding = self.message_encoding;
+        if (self.hasPresent("json_format")) result.json_format = self.json_format;
+        if (self.hasPresent("enforce_naming_style")) result.enforce_naming_style = self.enforce_naming_style;
+        if (self.hasPresent("default_symbol_visibility")) result.default_symbol_visibility = self.default_symbol_visibility;
+        if (self.hasPresent("enforce_proto_limits")) result.enforce_proto_limits = self.enforce_proto_limits;
+        result.present = self.present;
+        return result;
+    }
+
+    pub fn effective(features: ?FeatureSet, inherited: FeatureSet) FeatureSet {
+        return if (features) |value| value.mergeInherited(inherited) else inherited;
+    }
+
+    fn featureFieldNumber(leaf: []const u8) ?u4 {
+        if (std.mem.eql(u8, leaf, "field_presence")) return 1;
+        if (std.mem.eql(u8, leaf, "enum_type")) return 2;
+        if (std.mem.eql(u8, leaf, "repeated_field_encoding")) return 3;
+        if (std.mem.eql(u8, leaf, "utf8_validation")) return 4;
+        if (std.mem.eql(u8, leaf, "message_encoding")) return 5;
+        if (std.mem.eql(u8, leaf, "json_format")) return 6;
+        if (std.mem.eql(u8, leaf, "enforce_naming_style")) return 7;
+        if (std.mem.eql(u8, leaf, "default_symbol_visibility")) return 8;
+        if (std.mem.eql(u8, leaf, "enforce_proto_limits")) return 9;
+        return null;
+    }
+
     pub fn applyOption(self: *FeatureSet, option_name: []const u8, value: OptionValue) void {
         const leaf = if (std.mem.lastIndexOfScalar(u8, option_name, '.')) |idx| option_name[idx + 1 ..] else option_name;
         const ident = switch (value) {
@@ -1316,6 +1374,7 @@ pub const FeatureSet = struct {
             .boolean => |b| if (b) "true" else "false",
             else => return,
         };
+        self.markPresent(leaf);
         if (std.mem.eql(u8, leaf, "field_presence")) {
             if (std.ascii.eqlIgnoreCase(ident, "EXPLICIT")) self.field_presence = .explicit;
             if (std.ascii.eqlIgnoreCase(ident, "IMPLICIT")) self.field_presence = .implicit;
@@ -1461,7 +1520,7 @@ pub const FileDescriptor = struct {
     pub fn setEdition(self: *FileDescriptor, edition: Edition) void {
         self.syntax = .editions;
         self.edition = edition;
-        self.features = FeatureSet.defaults(.editions);
+        self.features = FeatureSet.defaultsForEdition(edition);
     }
 
     pub fn addOption(self: *FileDescriptor, option: FieldOption) std.mem.Allocator.Error!void {
@@ -2107,6 +2166,28 @@ test "schema parses edition source literals" {
     try std.testing.expectEqual(Edition.edition_99998_test_only, Edition.fromYear("99998_TEST_ONLY").?);
     try std.testing.expect(Edition.fromYear("PROTO2") == null);
     try std.testing.expect(Edition.fromYear("UNKNOWN") == null);
+}
+
+test "schema applies edition-specific feature defaults" {
+    const v2023 = FeatureSet.defaultsForEdition(.edition_2023);
+    try std.testing.expectEqual(FeatureSet.EnforceNamingStyle.style_legacy, v2023.enforce_naming_style);
+    try std.testing.expectEqual(FeatureSet.DefaultSymbolVisibility.export_all, v2023.default_symbol_visibility);
+    try std.testing.expectEqual(FeatureSet.EnforceProtoLimits.legacy_no_explicit_limits, v2023.enforce_proto_limits);
+
+    const v2024 = FeatureSet.defaultsForEdition(.edition_2024);
+    try std.testing.expectEqual(FeatureSet.EnforceNamingStyle.style2024, v2024.enforce_naming_style);
+    try std.testing.expectEqual(FeatureSet.DefaultSymbolVisibility.export_top_level, v2024.default_symbol_visibility);
+    try std.testing.expectEqual(FeatureSet.EnforceProtoLimits.legacy_no_explicit_limits, v2024.enforce_proto_limits);
+
+    const v2026 = FeatureSet.defaultsForEdition(.edition_2026);
+    try std.testing.expectEqual(FeatureSet.EnforceNamingStyle.style2026, v2026.enforce_naming_style);
+    try std.testing.expectEqual(FeatureSet.DefaultSymbolVisibility.strict, v2026.default_symbol_visibility);
+    try std.testing.expectEqual(FeatureSet.EnforceProtoLimits.proto_limits2026, v2026.enforce_proto_limits);
+
+    // UNSTABLE and test editions use the closest lower defaults.
+    const unstable = FeatureSet.defaultsForEdition(.unstable);
+    try std.testing.expectEqual(FeatureSet.EnforceNamingStyle.style2026, unstable.enforce_naming_style);
+    try std.testing.expectEqual(FeatureSet.EnforceProtoLimits.proto_limits2026, unstable.enforce_proto_limits);
 }
 
 test "schema finds closest FeatureSetDefaults entry for editions" {

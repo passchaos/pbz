@@ -611,8 +611,8 @@ fn formatMessageScope(package: []const u8, path: []const u8, buf: *[512]u8) ?[]c
 }
 
 fn enumIsClosed(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, enumeration: *const schema.EnumDescriptor) bool {
-    if (enumeration.features) |features| return features.enum_type == .closed;
-    return registry_mod.enumDefiningFile(file, registry, enumeration).features.enum_type == .closed;
+    const enum_file = registry_mod.enumDefiningFile(file, registry, enumeration);
+    return schema.FeatureSet.effective(enumeration.features, enum_file.features).enum_type == .closed;
 }
 
 fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
@@ -726,8 +726,7 @@ fn jsonFieldHasPresence(file: *const schema.FileDescriptor, registry: ?*const re
     if (field.cardinality == .required or field.cardinality == .optional or field.proto3_optional or field.oneof_name != null or field.kind == .group) return true;
     if (field.kind == .message and registryEnumDescriptor(file, registry, current, field.kind.message) == null) return true;
     if (field.cardinality == .repeated or field.kind == .map) return false;
-    if (field.features) |features| return features.field_presence != .implicit;
-    return file.features.field_presence != .implicit;
+    return schema.FeatureSet.effective(field.features, file.features).field_presence != .implicit;
 }
 
 fn jsonValueIsDefault(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, value: dynamic.Value) bool {

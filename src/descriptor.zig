@@ -117,8 +117,8 @@ fn writeFeatureSetEditionDefault(allocator: std.mem.Allocator, entry: schema.Fea
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
     if (entry.edition != .unknown) try tmp.writeInt32(3, @intFromEnum(entry.edition));
-    if (entry.overridable_features) |features| try writeFeatureSet(allocator, features, 4, &tmp);
-    if (entry.fixed_features) |features| try writeFeatureSet(allocator, features, 5, &tmp);
+    if (entry.overridable_features) |features| try writeFeatureSetFull(allocator, features, 4, &tmp);
+    if (entry.fixed_features) |features| try writeFeatureSetFull(allocator, features, 5, &tmp);
     try writer.writeMessage(field_number, tmp.slice());
 }
 
@@ -850,6 +850,58 @@ fn writeOptionValue(value: schema.OptionValue, writer: *wire.Writer) Error!void 
 fn writeFeatureSet(allocator: std.mem.Allocator, features: schema.FeatureSet, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
+    // Only explicitly set features are serialized, matching protoc's
+    // FileDescriptorProto output; inherited/edition defaults are resolved by
+    // the reader.
+    if (features.hasPresent("field_presence")) try tmp.writeInt32(1, switch (features.field_presence) {
+        .explicit => 1,
+        .implicit => 2,
+        .legacy_required => 3,
+    });
+    if (features.hasPresent("enum_type")) try tmp.writeInt32(2, switch (features.enum_type) {
+        .open => 1,
+        .closed => 2,
+    });
+    if (features.hasPresent("repeated_field_encoding")) try tmp.writeInt32(3, switch (features.repeated_field_encoding) {
+        .packed_encoding => 1,
+        .expanded => 2,
+    });
+    if (features.hasPresent("utf8_validation")) try tmp.writeInt32(4, switch (features.utf8_validation) {
+        .verify => 2,
+        .none => 3,
+    });
+    if (features.hasPresent("message_encoding")) try tmp.writeInt32(5, switch (features.message_encoding) {
+        .length_prefixed => 1,
+        .delimited => 2,
+    });
+    if (features.hasPresent("json_format")) try tmp.writeInt32(6, switch (features.json_format) {
+        .allow => 1,
+        .legacy_best_effort => 2,
+    });
+    if (features.hasPresent("enforce_naming_style")) try tmp.writeInt32(7, switch (features.enforce_naming_style) {
+        .style2024 => 1,
+        .style_legacy => 2,
+        .style2026 => 3,
+    });
+    if (features.hasPresent("default_symbol_visibility")) try tmp.writeInt32(8, switch (features.default_symbol_visibility) {
+        .export_all => 1,
+        .export_top_level => 2,
+        .local_all => 3,
+        .strict => 4,
+    });
+    if (features.hasPresent("enforce_proto_limits")) try tmp.writeInt32(9, switch (features.enforce_proto_limits) {
+        .legacy_no_explicit_limits => 1,
+        .proto_limits2026 => 2,
+    });
+    if (tmp.slice().len == 0) return;
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
+/// Serializes a fully-resolved FeatureSet (FeatureSetDefaults entries carry
+/// complete feature sets rather than per-scope overrides).
+fn writeFeatureSetFull(allocator: std.mem.Allocator, features: schema.FeatureSet, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
     try tmp.writeInt32(1, switch (features.field_presence) {
         .explicit => 1,
         .implicit => 2,
@@ -1526,7 +1578,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
     defer public_deps.deinit(allocator);
     var weak_deps: std.ArrayList(i32) = .empty;
     defer weak_deps.deinit(allocator);
-    var saw_file_features = false;
+    var decoded_file_features: ?schema.FeatureSet = null;
     var saw_syntax: ?schema.Syntax = null;
     var saw_edition_field = false;
     const owned_bytes = try allocator.dupe(u8, bytes);
@@ -1548,7 +1600,9 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
             5 => try appendEnumDescriptor(allocator, &file.enums, try decodeEnumDescriptor(allocator, try reader.readBytes())),
             6 => try appendServiceDescriptor(allocator, &file.services, try decodeServiceDescriptor(allocator, try reader.readBytes())),
             7 => try appendFieldDescriptor(allocator, &file.extensions, try decodeFieldDescriptor(allocator, &file.owned_strings, try reader.readBytes())),
-            8 => saw_file_features = try decodeFileOptions(allocator, &file, try reader.readBytes()) or saw_file_features,
+            8 => {
+                if (try decodeFileOptions(allocator, &file, try reader.readBytes())) |features| decoded_file_features = features;
+            },
             9 => {
                 var source_code_info = try decodeSourceCodeInfo(allocator, try reader.readBytes());
                 errdefer source_code_info.deinit(allocator);
@@ -1561,28 +1615,31 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
                     saw_syntax = .proto2;
                     file.syntax = .proto2;
                     file.edition = schema.Syntax.proto2.defaultEdition();
-                    if (!saw_file_features) file.features = schema.FeatureSet.defaults(.proto2);
+                    file.features = schema.FeatureSet.defaults(.proto2);
                 } else if (std.mem.eql(u8, syntax, "proto3")) {
                     saw_syntax = .proto3;
                     file.syntax = .proto3;
                     file.edition = schema.Syntax.proto3.defaultEdition();
-                    if (!saw_file_features) file.features = schema.FeatureSet.defaults(.proto3);
+                    file.features = schema.FeatureSet.defaults(.proto3);
                 } else if (std.mem.eql(u8, syntax, "editions")) {
                     saw_syntax = .editions;
                     file.syntax = .editions;
                     if (!saw_edition_field) file.edition = schema.Syntax.editions.defaultEdition();
-                    if (!saw_file_features) file.features = schema.FeatureSet.defaults(.editions);
+                    file.features = schema.FeatureSet.defaultsForEdition(file.edition);
                 } else return error.InvalidFieldType;
             },
             14 => {
                 saw_edition_field = true;
                 file.syntax = .editions;
                 file.edition = std.enums.fromInt(schema.Edition, try reader.readInt32()) orelse return error.InvalidFieldType;
-                if (!saw_file_features) file.features = schema.FeatureSet.defaults(.editions);
+                file.features = schema.FeatureSet.defaultsForEdition(file.edition);
             },
             else => try reader.skipValue(tag),
         }
     }
+    // File-level features in a FileDescriptorProto carry only explicitly set
+    // values; resolve them over the edition defaults.
+    if (decoded_file_features) |features| file.features = features.mergeInherited(file.features);
     try validateDecodedFileEdition(&file, saw_syntax, saw_edition_field);
     try validateImportList(file.imports.items);
     try validateDependencyIndexes(public_deps.items, weak_deps.items, file.imports.items.len);
@@ -3238,8 +3295,8 @@ fn decodeMessageOptions(allocator: std.mem.Allocator, message: *schema.MessageDe
     }
 }
 
-fn decodeFileOptions(allocator: std.mem.Allocator, file: *schema.FileDescriptor, bytes: []const u8) Error!bool {
-    var saw_features = false;
+fn decodeFileOptions(allocator: std.mem.Allocator, file: *schema.FileDescriptor, bytes: []const u8) Error!?schema.FeatureSet {
+    var decoded_features: ?schema.FeatureSet = null;
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
@@ -3262,15 +3319,12 @@ fn decodeFileOptions(allocator: std.mem.Allocator, file: *schema.FileDescriptor,
             41 => try file.options.append(allocator, .{ .name = "php_namespace", .value = .{ .string = try reader.readBytes() } }),
             44 => try file.options.append(allocator, .{ .name = "php_metadata_namespace", .value = .{ .string = try reader.readBytes() } }),
             45 => try file.options.append(allocator, .{ .name = "ruby_package", .value = .{ .string = try reader.readBytes() } }),
-            50 => {
-                file.features = try decodeFeatureSet(try reader.readBytes());
-                saw_features = true;
-            },
+            50 => decoded_features = try decodeFeatureSet(try reader.readBytes()),
             999 => try appendFieldOption(allocator, &file.options, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
     }
-    return saw_features;
+    return decoded_features;
 }
 
 const DecodedFieldOptions = struct {
@@ -3403,63 +3457,99 @@ fn decodeFeatureSet(bytes: []const u8) Error!schema.FeatureSet {
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
-            1 => features.field_presence = switch (try reader.readInt32()) {
-                0 => features.field_presence,
-                1 => .explicit,
-                2 => .implicit,
-                3 => .legacy_required,
-                else => return error.InvalidFieldType,
+            1 => {
+                const value = try reader.readInt32();
+                features.field_presence = switch (value) {
+                    0 => features.field_presence,
+                    1 => .explicit,
+                    2 => .implicit,
+                    3 => .legacy_required,
+                    else => return error.InvalidFieldType,
+                };
+                if (value != 0) features.markPresent("field_presence");
             },
-            2 => features.enum_type = switch (try reader.readInt32()) {
-                0 => features.enum_type,
-                1 => .open,
-                2 => .closed,
-                else => return error.InvalidFieldType,
+            2 => {
+                const value = try reader.readInt32();
+                features.enum_type = switch (value) {
+                    0 => features.enum_type,
+                    1 => .open,
+                    2 => .closed,
+                    else => return error.InvalidFieldType,
+                };
+                if (value != 0) features.markPresent("enum_type");
             },
-            3 => features.repeated_field_encoding = switch (try reader.readInt32()) {
-                0 => features.repeated_field_encoding,
-                1 => .packed_encoding,
-                2 => .expanded,
-                else => return error.InvalidFieldType,
+            3 => {
+                const value = try reader.readInt32();
+                features.repeated_field_encoding = switch (value) {
+                    0 => features.repeated_field_encoding,
+                    1 => .packed_encoding,
+                    2 => .expanded,
+                    else => return error.InvalidFieldType,
+                };
+                if (value != 0) features.markPresent("repeated_field_encoding");
             },
-            4 => features.utf8_validation = switch (try reader.readInt32()) {
-                0 => features.utf8_validation,
-                2 => .verify,
-                3 => .none,
-                else => return error.InvalidFieldType,
+            4 => {
+                const value = try reader.readInt32();
+                features.utf8_validation = switch (value) {
+                    0 => features.utf8_validation,
+                    2 => .verify,
+                    3 => .none,
+                    else => return error.InvalidFieldType,
+                };
+                if (value != 0) features.markPresent("utf8_validation");
             },
-            5 => features.message_encoding = switch (try reader.readInt32()) {
-                0 => features.message_encoding,
-                1 => .length_prefixed,
-                2 => .delimited,
-                else => return error.InvalidFieldType,
+            5 => {
+                const value = try reader.readInt32();
+                features.message_encoding = switch (value) {
+                    0 => features.message_encoding,
+                    1 => .length_prefixed,
+                    2 => .delimited,
+                    else => return error.InvalidFieldType,
+                };
+                if (value != 0) features.markPresent("message_encoding");
             },
-            6 => features.json_format = switch (try reader.readInt32()) {
-                0 => features.json_format,
-                1 => .allow,
-                2 => .legacy_best_effort,
-                else => return error.InvalidFieldType,
+            6 => {
+                const value = try reader.readInt32();
+                features.json_format = switch (value) {
+                    0 => features.json_format,
+                    1 => .allow,
+                    2 => .legacy_best_effort,
+                    else => return error.InvalidFieldType,
+                };
+                if (value != 0) features.markPresent("json_format");
             },
-            7 => features.enforce_naming_style = switch (try reader.readInt32()) {
-                0 => features.enforce_naming_style,
-                1 => .style2024,
-                2 => .style_legacy,
-                3 => .style2026,
-                else => return error.InvalidFieldType,
+            7 => {
+                const value = try reader.readInt32();
+                features.enforce_naming_style = switch (value) {
+                    0 => features.enforce_naming_style,
+                    1 => .style2024,
+                    2 => .style_legacy,
+                    3 => .style2026,
+                    else => return error.InvalidFieldType,
+                };
+                if (value != 0) features.markPresent("enforce_naming_style");
             },
-            8 => features.default_symbol_visibility = switch (try reader.readInt32()) {
-                0 => features.default_symbol_visibility,
-                1 => .export_all,
-                2 => .export_top_level,
-                3 => .local_all,
-                4 => .strict,
-                else => return error.InvalidFieldType,
+            8 => {
+                const value = try reader.readInt32();
+                features.default_symbol_visibility = switch (value) {
+                    0 => features.default_symbol_visibility,
+                    1 => .export_all,
+                    2 => .export_top_level,
+                    3 => .local_all,
+                    4 => .strict,
+                    else => return error.InvalidFieldType,
+                };
+                if (value != 0) features.markPresent("default_symbol_visibility");
             },
-            9 => features.enforce_proto_limits = switch (try reader.readInt32()) {
-                0 => features.enforce_proto_limits,
-                1 => .legacy_no_explicit_limits,
-                2 => .proto_limits2026,
-                else => return error.InvalidFieldType,
+            9 => {
+                const value = try reader.readInt32();
+                features.enforce_proto_limits = switch (value) {
+                    0 => features.enforce_proto_limits,
+                    1 => .legacy_no_explicit_limits,
+                    2 => .proto_limits2026,
+                    else => return error.InvalidFieldType,
+                };
+                if (value != 0) features.markPresent("enforce_proto_limits");
             },
             else => try reader.skipValue(tag),
         }
@@ -6833,16 +6923,41 @@ test "descriptor rejects invalid field feature support" {
     }
 }
 
+test "descriptor round-trips inherited feature values" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\edition = "2023";
+        \\package demo;
+        \\option features.repeated_field_encoding = EXPANDED;
+        \\message M {
+        \\  repeated int32 values = 1 [features.field_presence = IMPLICIT];
+        \\}
+    );
+    defer file.deinit();
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "feature-inheritance.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+
+    try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.expanded, decoded.features.repeated_field_encoding);
+    const field = decoded.findMessage("M").?.findField("values").?;
+    try std.testing.expectEqual(schema.FeatureSet.FieldPresence.implicit, field.fieldPresence(&decoded));
+    try std.testing.expect(!field.resolvedPacked(&decoded));
+    try std.testing.expect(field.features.?.hasPresent("field_presence"));
+    try std.testing.expect(!field.features.?.hasPresent("repeated_field_encoding"));
+}
+
 test "descriptor preserves FeatureSet options across declaration scopes" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\edition = "2026";
         \\option features.json_format = LEGACY_BEST_EFFORT;
         \\message M {
-        \\  option features.message_encoding = DELIMITED;
+        \\  option features.enforce_naming_style = STYLE_LEGACY;
         \\  repeated int32 values = 1 [features.repeated_field_encoding = EXPANDED];
         \\  oneof pick {
-        \\    option features.field_presence = EXPLICIT;
+        \\    option features.enforce_naming_style = STYLE2024;
         \\    string name = 2;
         \\  }
         \\}
@@ -6856,7 +6971,7 @@ test "descriptor preserves FeatureSet options across declaration scopes" {
         \\service S {
         \\  option features.enforce_naming_style = STYLE2024;
         \\  rpc Do (M) returns (M) {
-        \\    option features.enforce_proto_limits = PROTO_LIMITS2026;
+        \\    option features.enforce_naming_style = STYLE_LEGACY;
         \\  }
         \\}
     );
@@ -6872,13 +6987,13 @@ test "descriptor preserves FeatureSet options across declaration scopes" {
     try std.testing.expectEqual(@as(usize, 0), decoded.options.items.len);
 
     const message = decoded.findMessage("M").?;
-    try std.testing.expectEqual(schema.FeatureSet.MessageEncoding.delimited, message.features.?.message_encoding);
+    try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style_legacy, message.features.?.enforce_naming_style);
     try std.testing.expectEqual(@as(usize, 0), message.options.items.len);
     const field = message.findField("values").?;
     try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.expanded, field.features.?.repeated_field_encoding);
     try std.testing.expect(!field.resolvedPacked(&decoded));
     try std.testing.expectEqual(@as(usize, 0), field.options.items.len);
-    try std.testing.expectEqual(schema.FeatureSet.FieldPresence.explicit, message.oneofs.items[0].features.?.field_presence);
+    try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style2024, message.oneofs.items[0].features.?.enforce_naming_style);
     try std.testing.expectEqual(@as(usize, 0), message.oneofs.items[0].options.items.len);
 
     const enumeration = decoded.findEnum("E").?;
@@ -6894,7 +7009,7 @@ test "descriptor preserves FeatureSet options across declaration scopes" {
     try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style2024, service.features.?.enforce_naming_style);
     try std.testing.expectEqual(@as(usize, 0), service.options.items.len);
     const method = service.methods.items[0];
-    try std.testing.expectEqual(schema.FeatureSet.EnforceProtoLimits.proto_limits2026, method.features.?.enforce_proto_limits);
+    try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style_legacy, method.features.?.enforce_naming_style);
     try std.testing.expectEqual(@as(usize, 0), method.options.items.len);
 }
 
@@ -7185,11 +7300,11 @@ test "descriptor round-trips oneof option source info" {
 test "descriptor round-trips extension range option source info" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
-        \\edition = "2023";
+        \\edition = "2024";
         \\message Host {
         \\  extensions 100 to 101, 200 to 201 [
         \\    verification = UNVERIFIED,
-        \\    features.repeated_field_encoding = EXPANDED
+        \\    features.enforce_naming_style = STYLE_LEGACY
         \\  ];
         \\}
     );
@@ -7276,13 +7391,13 @@ fn findSourceLocation(file: *const schema.FileDescriptor, path: []const i32) ?*c
 test "descriptor preserves extension range options" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
-        \\edition = "2023";
+        \\edition = "2024";
         \\package demo;
         \\message Host {
         \\  extensions 100 to max [
         \\    declaration = { number: 100 full_name: ".demo.ext" type: ".demo.Ext" reserved: true },
         \\    verification = DECLARATION,
-        \\    features.enum_type = CLOSED
+        \\    features.enforce_naming_style = STYLE_LEGACY
         \\  ];
         \\}
         \\message Ext {}
@@ -7303,7 +7418,7 @@ test "descriptor preserves extension range options" {
     try std.testing.expectEqualStrings(".demo.Ext", range.declarations.items[0].type_name);
     try std.testing.expect(range.declarations.items[0].reserved);
     try std.testing.expectEqual(schema.ExtensionRangeVerification.declaration, range.verification.?);
-    try std.testing.expectEqual(schema.FeatureSet.EnumType.closed, range.features.?.enum_type);
+    try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style_legacy, range.features.?.enforce_naming_style);
 }
 
 test "descriptor encodes max range ends" {

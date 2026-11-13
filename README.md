@@ -84,22 +84,25 @@ generated runner is large; `PBZ_CONFORMANCE_OPTIMIZE=Debug` builds it much
 faster for local iteration.
 
 `PBZ_CONFORMANCE_GENERATED_JSON=1` additionally routes JSON parse and stringify
-through generated code; it passes the full 2808/2808 suite, including Any,
-Struct/Value/ListValue, wrappers, duplicate keys, and URL-safe base64.
+through generated code; it passes the full 2817/2817 suite, including Any,
+Struct/Value/ListValue, wrappers, duplicate keys, URL-safe base64, and the
+100-container JSON recursion limit.
 `PBZ_CONFORMANCE_GENERATED_TEXT=1` routes TextFormat parse and format through
 generated code and now passes the full 445/445: the fast line-oriented parser
 handles simple input, falls back to the conformant dynamic parser on complex
 syntax, and the generated formatter supports `print_unknown_fields`.
 
-Latest accepted local results (protobuf 35.1):
+Latest accepted local results (protobuf 36.2, including the new
+`StructDeepNesting`/`ValueDeepNesting`/`ListValueDeepNesting` JSON recursion
+tests):
 
 ```text
 # dynamic path
-CONFORMANCE SUITE PASSED: 2808 successes, 0 skipped, 0 expected failures, 0 unexpected failures.
+CONFORMANCE SUITE PASSED: 2817 successes, 0 skipped, 0 expected failures, 0 unexpected failures.
 CONFORMANCE SUITE PASSED: 445 successes, 0 skipped, 0 expected failures, 0 unexpected failures.
 
 # generated path
-CONFORMANCE SUITE PASSED: 2808 successes, 0 skipped, 0 expected failures, 0 unexpected failures.
+CONFORMANCE SUITE PASSED: 2817 successes, 0 skipped, 0 expected failures, 0 unexpected failures.
 CONFORMANCE SUITE PASSED: 445 successes, 0 skipped, 0 expected failures, 0 unexpected failures.
 ```
 
@@ -107,7 +110,7 @@ The generated path decodes binary requests with generated types, encodes them,
 and normalizes the response through the registry-aware dynamic encoder so
 canonical byte layout matches the reference for cyclic raw fields and unknown
 field ordering. With `PBZ_CONFORMANCE_GENERATED_JSON=1` and
-`PBZ_CONFORMANCE_GENERATED_TEXT=1` the same 2808/445 results are produced
+`PBZ_CONFORMANCE_GENERATED_TEXT=1` the same 2817/445 results are produced
 entirely by generated parse/stringify/format code.
 
 A lightweight smoke test is also available:
@@ -134,7 +137,7 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --pivot --exclude-zero-c
 ```
 
 `PBZ_COMPARE_LATEST_CPP=1` builds the full C++ benchmark against the protobuf
-release used by the upstream conformance suite (default 35.1) instead of the
+release used by the upstream conformance suite (default 36.2) instead of the
 system libprotobuf. `PBZ_COMPARE_UPB=1` builds the upb C-runtime benchmark
 against the same release; upb is the C implementation behind Google's
 production protobuf runtimes. The compare script derives `GOMAXPROCS` from the
@@ -211,7 +214,7 @@ Generated fields typed as `Timestamp`, `Duration`, `FieldMask`, `Empty`, a
 wrapper type, or `Struct`/`Value`/`ListValue` now parse and emit their canonical
 JSON forms instead of generic message objects. The opt-in
 `PBZ_CONFORMANCE_GENERATED_JSON=1` audit mode runs the conformance suite through
-generated parse and stringify and now passes 2808/2808 plus 445/445 TextFormat;
+generated parse and stringify and now passes 2817/2817 plus 445/445 TextFormat;
 generated `Any` JSON uses a per-field dynamic fallback with a descriptor
 registry built from the embedded file descriptor and imports.
 A best-of-runs check with the

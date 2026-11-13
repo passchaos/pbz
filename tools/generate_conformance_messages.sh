@@ -17,7 +17,7 @@ case "$OUT" in
   /*) ;;
   *) OUT="$(pwd)/$OUT" ;;
 esac
-VERSION="${PROTOBUF_CONFORMANCE_VERSION:-35.1}"
+VERSION="${PROTOBUF_CONFORMANCE_VERSION:-36.2}"
 CACHE="${PBZ_CONFORMANCE_CACHE:-$ROOT/.zig-cache/pbz-conformance}"
 SRC="$CACHE/protobuf-$VERSION"
 BUILD="$CACHE/build-$VERSION"

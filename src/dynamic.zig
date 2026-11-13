@@ -1878,8 +1878,8 @@ fn enumNameForNumber(enumeration: *const schema.EnumDescriptor, number: i32) ?[]
 }
 
 fn enumIsClosed(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, enumeration: *const schema.EnumDescriptor) bool {
-    if (enumeration.features) |features| return features.enum_type == .closed;
-    return registry_mod.enumDefiningFile(file, registry, enumeration).features.enum_type == .closed;
+    const enum_file = registry_mod.enumDefiningFile(file, registry, enumeration);
+    return schema.FeatureSet.effective(enumeration.features, enum_file.features).enum_type == .closed;
 }
 
 fn fieldHasPresenceForEncoding(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: ?*const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
@@ -1887,8 +1887,7 @@ fn fieldHasPresenceForEncoding(file: *const schema.FileDescriptor, registry: ?*c
     if (fieldIsRequired(field) or field.proto3_optional or field.oneof_name != null or field.kind == .group) return true;
     if (field.kind == .message and fieldKindIsRegistryEnum(field_file, registry, current, field.kind) == null) return true;
     if (field.cardinality == .repeated or field.kind == .map) return false;
-    if (field.features) |features| return features.field_presence != .implicit;
-    return field_file.features.field_presence != .implicit;
+    return schema.FeatureSet.effective(field.features, field_file.features).field_presence != .implicit;
 }
 
 fn fieldIsRequired(field: *const schema.FieldDescriptor) bool {
@@ -1940,12 +1939,7 @@ fn resolvedPackedForEncoding(file: *const schema.FileDescriptor, registry: ?*con
     const kind = scalarLikeKindForEncoding(field_file, registry, current, field.kind);
     if (!kind.packable()) return false;
     if (field.packed_override) |is_packed| return is_packed;
-    if (field.features) |features| return features.repeated_field_encoding == schema.FeatureSet.RepeatedFieldEncoding.packed_encoding;
-    return switch (field_file.syntax) {
-        .proto2 => false,
-        .proto3 => true,
-        .editions => field_file.features.repeated_field_encoding == schema.FeatureSet.RepeatedFieldEncoding.packed_encoding,
-    };
+    return schema.FeatureSet.effective(field.features, field_file.features).repeated_field_encoding == schema.FeatureSet.RepeatedFieldEncoding.packed_encoding;
 }
 
 fn scalarLikeKindForEncoding(file: ?*const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: ?*const schema.MessageDescriptor, kind: schema.FieldKind) schema.FieldKind {

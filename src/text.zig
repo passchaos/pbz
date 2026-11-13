@@ -1583,8 +1583,8 @@ fn resolveMessageDescriptorWithRegistry(file: *const schema.FileDescriptor, regi
 }
 
 fn enumIsClosed(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, enumeration: *const schema.EnumDescriptor) bool {
-    if (enumeration.features) |features| return features.enum_type == .closed;
-    return registry_mod.enumDefiningFile(file, registry, enumeration).features.enum_type == .closed;
+    const enum_file = registry_mod.enumDefiningFile(file, registry, enumeration);
+    return schema.FeatureSet.effective(enumeration.features, enum_file.features).enum_type == .closed;
 }
 
 fn defaultEnumNumber(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8) i32 {
@@ -1601,9 +1601,7 @@ fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
 }
 
 fn fieldUtf8Validation(file: *const schema.FileDescriptor, field: ?*const schema.FieldDescriptor) schema.FeatureSet.Utf8Validation {
-    if (field) |descriptor| {
-        if (descriptor.features) |features| return features.utf8_validation;
-    }
+    if (field) |descriptor| return schema.FeatureSet.effective(descriptor.features, file.features).utf8_validation;
     return file.features.utf8_validation;
 }
 
