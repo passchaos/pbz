@@ -343,6 +343,29 @@ pub fn build(b: *std.Build) void {
     const bench_step = b.step("bench", "Run pbz benchmark baseline");
     bench_step.dependOn(&run_bench.step);
 
+    // Temporary focused JSON parse probe for fast iteration.
+    const json_probe_exe = b.addExecutable(.{
+        .name = "json-probe",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/json_probe.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .imports = &.{
+                .{ .name = "pbz", .module = mod },
+                .{ .name = "person_pb", .module = b.createModule(.{
+                    .root_source_file = b.path("examples/generated/person.pb.zig"),
+                    .target = target,
+                    .optimize = optimize,
+                    .imports = &.{.{ .name = "pbz", .module = mod }},
+                }) },
+            },
+        }),
+    });
+    const run_json_probe = b.addRunArtifact(json_probe_exe);
+    const json_probe_step = b.step("json-probe", "Run focused JSON parse probe");
+    json_probe_step.dependOn(&run_json_probe.step);
+
     const run_summary_self_test = b.addSystemCommand(&.{
         python,
         "bench/summarize_compare.py",

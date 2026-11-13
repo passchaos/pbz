@@ -4,6 +4,13 @@ const schema = @import("schema.zig");
 const dynamic = @import("dynamic.zig");
 const wkt = @import("wkt.zig");
 const registry_mod = @import("registry.zig");
+const json_tree = @import("json_value.zig");
+
+/// Lean JSON value tree shared with generated code. See `json_value.zig`.
+pub const Value = json_tree.Value;
+
+/// Parse a complete JSON document into a `Value` tree.
+pub const parseValueTree = json_tree.parse;
 
 pub const Error = std.Io.Writer.Error || dynamic.DecodeError || error{ TimestampOutOfRange, DurationOutOfRange, InvalidNanos, DurationSignMismatch, InvalidFieldMask, InvalidNumber };
 
@@ -24,7 +31,7 @@ pub const Options = struct {
 /// depending on parser options, while quoted strings are intentionally kept to
 /// decimal integer spelling. Exporting this helper keeps generated code and
 /// dynamic JSON parsing from drifting apart on that edge case.
-pub fn intValue(comptime T: type, json_value: std.json.Value) !T {
+pub fn intValue(comptime T: type, json_value: Value) !T {
     switch (json_value) {
         .integer => |value| {
             if (value < std.math.minInt(T) or value > std.math.maxInt(T)) return error.Overflow;
@@ -103,12 +110,16 @@ pub fn parseAllocWithRegistry(
     bytes: []const u8,
     options: Options,
 ) anyerror!dynamic.DynamicMessage {
-    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, bytes, .{ .duplicate_field_behavior = .@"error" });
-    defer parsed.deinit();
+    // Parse the DOM in a dedicated arena: the tree is append-only and the
+    // message copies every string/key it keeps, so one arena release is both
+    // faster and simpler than freeing each DOM node individually.
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const parsed = try parseValueTree(arena.allocator(), bytes, .{});
 
     var message = dynamic.DynamicMessage.init(allocator, descriptor);
     errdefer message.deinit();
-    try fillMessageWithRegistry(allocator, file, registry, &message, parsed.value, options);
+    try fillMessageWithRegistry(allocator, file, registry, &message, parsed, options);
     return message;
 }
 
@@ -142,7 +153,7 @@ pub fn fillMessage(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
     message: *dynamic.DynamicMessage,
-    json_value: std.json.Value,
+    json_value: Value,
     options: Options,
 ) anyerror!void {
     try fillMessageWithRegistry(allocator, file, null, message, json_value, options);
@@ -153,7 +164,7 @@ pub fn fillMessageWithRegistry(
     file: *const schema.FileDescriptor,
     registry: ?*const registry_mod.Registry,
     message: *dynamic.DynamicMessage,
-    json_value: std.json.Value,
+    json_value: Value,
     options: Options,
 ) anyerror!void {
     const object = switch (json_value) {
@@ -168,7 +179,7 @@ fn fillMessageObject(
     file: *const schema.FileDescriptor,
     registry: ?*const registry_mod.Registry,
     message: *dynamic.DynamicMessage,
-    object: std.json.ObjectMap,
+    object: Value.Object,
     options: Options,
     skip_type_field: bool,
 ) anyerror!void {
@@ -176,22 +187,22 @@ fn fillMessageObject(
     defer seen_fields.deinit(allocator);
     var it = object.iterator();
     while (it.next()) |entry| {
-        if (skip_type_field and std.mem.eql(u8, entry.key_ptr.*, "@type")) continue;
-        const field = findJsonField(file, registry, message.descriptor, entry.key_ptr.*, options) orelse {
+        if (skip_type_field and std.mem.eql(u8, entry.key, "@type")) continue;
+        const field = findJsonField(file, registry, message.descriptor, entry.key, options) orelse {
             if (options.ignore_unknown_fields) continue;
             return error.UnknownField;
         };
         const field_file = registry_mod.fieldDefiningFile(file, registry, field);
-        if (entry.value_ptr.* == .null and jsonNullSkipsField(field_file, registry, message.descriptor, field)) continue;
+        if (entry.value == .null and jsonNullSkipsField(field_file, registry, message.descriptor, field)) continue;
         if (seenJsonField(seen_fields.items, field.number)) return error.DuplicateField;
         if (field.oneof_name) |oneof_name| {
             if (seenJsonOneof(seen_fields.items, message.descriptor, oneof_name, field.number)) return error.DuplicateField;
         }
         try seen_fields.append(allocator, field.number);
         if (field.kind == .map) {
-            try parseMapField(allocator, field_file, registry, message, field, entry.value_ptr.*, options);
+            try parseMapField(allocator, field_file, registry, message, field, entry.value, options);
         } else if (field.cardinality == .repeated) {
-            const array = switch (entry.value_ptr.*) {
+            const array = switch (entry.value) {
                 .array => |array| array,
                 else => return error.TypeMismatch,
             };
@@ -203,7 +214,7 @@ fn fillMessageObject(
                 try addOwnedValue(allocator, message, field, value);
             }
         } else {
-            const value = parseValue(allocator, field_file, registry, message.descriptor, field.kind, entry.value_ptr.*, options) catch |err| {
+            const value = parseValue(allocator, field_file, registry, message.descriptor, field.kind, entry.value, options) catch |err| {
                 if (shouldIgnoreEnumParseError(options, field_file, registry, message.descriptor, field.kind, err)) continue;
                 return err;
             };
@@ -263,7 +274,7 @@ fn parseMapField(
     registry: ?*const registry_mod.Registry,
     message: *dynamic.DynamicMessage,
     field: *const schema.FieldDescriptor,
-    json_value: std.json.Value,
+    json_value: Value,
     options: Options,
 ) anyerror!void {
     const map_type = switch (field.kind) {
@@ -276,10 +287,10 @@ fn parseMapField(
     };
     var it = object.iterator();
     while (it.next()) |entry| {
-        var key = try parseMapKey(allocator, map_type.key, entry.key_ptr.*);
+        var key = try parseMapKey(allocator, map_type.key, entry.key);
         var owns_key = true;
         errdefer if (owns_key) dynamic.deinitValue(&key, allocator);
-        var map_value = parseValue(allocator, file, registry, message.descriptor, map_type.value.*, entry.value_ptr.*, options) catch |err| {
+        var map_value = parseValue(allocator, file, registry, message.descriptor, map_type.value.*, entry.value, options) catch |err| {
             if (shouldIgnoreEnumParseError(options, file, registry, message.descriptor, map_type.value.*, err)) {
                 dynamic.deinitValue(&key, allocator);
                 owns_key = false;
@@ -318,7 +329,7 @@ fn parseValue(
     registry: ?*const registry_mod.Registry,
     current: *const schema.MessageDescriptor,
     kind: schema.FieldKind,
-    json_value: std.json.Value,
+    json_value: Value,
     options: Options,
 ) anyerror!dynamic.Value {
     return switch (kind) {
@@ -354,7 +365,7 @@ fn parseValue(
     };
 }
 
-fn parseScalar(allocator: std.mem.Allocator, scalar: schema.ScalarType, json_value: std.json.Value) !dynamic.Value {
+fn parseScalar(allocator: std.mem.Allocator, scalar: schema.ScalarType, json_value: Value) !dynamic.Value {
     return switch (scalar) {
         .double => .{ .double = try numberAsFloat(f64, json_value) },
         .float => .{ .float = try numberAsFloat(f32, json_value) },
@@ -383,7 +394,7 @@ fn parseScalar(allocator: std.mem.Allocator, scalar: schema.ScalarType, json_val
     };
 }
 
-fn parseEnumWithRegistry(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8, json_value: std.json.Value) !dynamic.Value {
+fn parseEnumWithRegistry(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8, json_value: Value) !dynamic.Value {
     const enumeration = registryEnumDescriptor(file, registry, current, name);
     switch (json_value) {
         .string => |value| {
@@ -440,7 +451,7 @@ fn parseMapKey(allocator: std.mem.Allocator, scalar: schema.ScalarType, key: []c
     };
 }
 
-fn numberAsInt(comptime T: type, json_value: std.json.Value) !T {
+fn numberAsInt(comptime T: type, json_value: Value) !T {
     return try intValue(T, json_value);
 }
 
@@ -461,7 +472,7 @@ fn floatAsInt(comptime T: type, value: f64) !T {
     return @intFromFloat(value);
 }
 
-fn numberAsFloat(comptime T: type, json_value: std.json.Value) !T {
+fn numberAsFloat(comptime T: type, json_value: Value) !T {
     const out: T = switch (json_value) {
         .integer => |value| @floatFromInt(value),
         .float => |value| @floatCast(value),
@@ -892,7 +903,7 @@ fn writeValueMessage(message: *const dynamic.DynamicMessage, writer: *std.Io.Wri
     try writer.writeAll("null");
 }
 
-fn parseStructMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, descriptor: *const schema.MessageDescriptor, json_value: std.json.Value) anyerror!*dynamic.DynamicMessage {
+fn parseStructMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, descriptor: *const schema.MessageDescriptor, json_value: Value) anyerror!*dynamic.DynamicMessage {
     const object = switch (json_value) {
         .object => |object| object,
         else => return error.TypeMismatch,
@@ -914,13 +925,13 @@ fn parseStructMessage(allocator: std.mem.Allocator, file: *const schema.FileDesc
     };
     var it = object.iterator();
     while (it.next()) |entry| {
-        const value_message = try parseValueMessage(allocator, file, value_desc, entry.value_ptr.*);
+        const value_message = try parseValueMessage(allocator, file, value_desc, entry.value);
         var owns_value_message = true;
         errdefer if (owns_value_message) {
             value_message.deinit();
             allocator.destroy(value_message);
         };
-        const key = try allocator.dupe(u8, entry.key_ptr.*);
+        const key = try allocator.dupe(u8, entry.key);
         var owns_key = true;
         errdefer if (owns_key) allocator.free(key);
         const map_entry = try allocator.create(dynamic.MapEntry);
@@ -935,7 +946,7 @@ fn parseStructMessage(allocator: std.mem.Allocator, file: *const schema.FileDesc
     return message;
 }
 
-fn parseListValueMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, descriptor: *const schema.MessageDescriptor, json_value: std.json.Value) anyerror!*dynamic.DynamicMessage {
+fn parseListValueMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, descriptor: *const schema.MessageDescriptor, json_value: Value) anyerror!*dynamic.DynamicMessage {
     const array = switch (json_value) {
         .array => |array| array,
         else => return error.TypeMismatch,
@@ -957,7 +968,7 @@ fn parseListValueMessage(allocator: std.mem.Allocator, file: *const schema.FileD
     return message;
 }
 
-fn parseValueMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, descriptor: *const schema.MessageDescriptor, json_value: std.json.Value) anyerror!*dynamic.DynamicMessage {
+fn parseValueMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, descriptor: *const schema.MessageDescriptor, json_value: Value) anyerror!*dynamic.DynamicMessage {
     const message = try allocator.create(dynamic.DynamicMessage);
     message.* = dynamic.DynamicMessage.init(allocator, descriptor);
     errdefer {
@@ -989,7 +1000,7 @@ fn writeWrapperValue(kind: schema.FieldKind, value: dynamic.Value, writer: *std.
     };
 }
 
-fn parseWrapperValue(allocator: std.mem.Allocator, kind: schema.FieldKind, json_value: std.json.Value) !dynamic.Value {
+fn parseWrapperValue(allocator: std.mem.Allocator, kind: schema.FieldKind, json_value: Value) !dynamic.Value {
     return switch (kind) {
         .scalar => |scalar| try parseScalar(allocator, scalar, json_value),
         else => error.TypeMismatch,
@@ -1091,7 +1102,7 @@ fn writeStandaloneAnyJson(allocator: std.mem.Allocator, any: wkt.Any, writer: *s
     };
 }
 
-fn parseKnownMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor, name: []const u8, json_value: std.json.Value, options: Options) anyerror!?*dynamic.DynamicMessage {
+fn parseKnownMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor, name: []const u8, json_value: Value, options: Options) anyerror!?*dynamic.DynamicMessage {
     if (typeNameEquals(name, "google.protobuf.Struct")) return try parseStructMessage(allocator, file, descriptor, json_value);
     if (typeNameEquals(name, "google.protobuf.Value")) return try parseValueMessage(allocator, file, descriptor, json_value);
     if (typeNameEquals(name, "google.protobuf.ListValue")) return try parseListValueMessage(allocator, file, descriptor, json_value);
@@ -1154,7 +1165,7 @@ fn parseKnownMessage(allocator: std.mem.Allocator, file: *const schema.FileDescr
     return null;
 }
 
-fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor, json_value: std.json.Value, options: Options) anyerror!*dynamic.DynamicMessage {
+fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor, json_value: Value, options: Options) anyerror!*dynamic.DynamicMessage {
     const object = switch (json_value) {
         .object => |object| object,
         else => return error.TypeMismatch,
@@ -1184,7 +1195,7 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
             if (anyUsesValueEnvelope(payload_name)) {
                 var it = object.iterator();
                 while (it.next()) |entry| {
-                    if (!std.mem.eql(u8, entry.key_ptr.*, "@type") and !std.mem.eql(u8, entry.key_ptr.*, "value")) return error.UnknownField;
+                    if (!std.mem.eql(u8, entry.key, "@type") and !std.mem.eql(u8, entry.key, "value")) return error.UnknownField;
                 }
                 const payload_file = registry_mod.messageDefiningFile(file, registry, resolved);
                 const payload = (try parseKnownMessage(allocator, payload_file, registry, resolved, payload_name, value_json, options)) orelse return error.TypeMismatch;
@@ -1202,7 +1213,7 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
         if (payload_desc == null) {
             var it = object.iterator();
             while (it.next()) |entry| {
-                if (!std.mem.eql(u8, entry.key_ptr.*, "@type") and !std.mem.eql(u8, entry.key_ptr.*, "value")) return error.UnknownField;
+                if (!std.mem.eql(u8, entry.key, "@type") and !std.mem.eql(u8, entry.key, "value")) return error.UnknownField;
             }
             const encoded = switch (value_json) {
                 .string => |value| value,

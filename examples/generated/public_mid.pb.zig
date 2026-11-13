@@ -452,20 +452,22 @@ pub const demo = struct {
                     errdefer allocator.destroy(arena);
                     arena.* = std.heap.ArenaAllocator.init(allocator);
                     errdefer arena.deinit();
-                    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .@"error" });
+                    const owned_text = try arena.allocator().dupe(u8, text);
+                    const parsed = try pbz.json.parseValueTree(arena.allocator(), owned_text, .{});
                     var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
                     self._json_arena = arena;
                     return self;
                 }
 
                 /// Parse a pre-parsed JSON subtree without serializing it back to text first.
-                /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
-                pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+                /// The caller must keep `arena_allocator` alive for decoded bytes and keep
+                /// the text backing `json_value` alive for borrowed string slices.
+                pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: pbz.json.Value) !@This() {
                     return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
                 }
 
                 /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
-                pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) anyerror!@This() {
+                pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: pbz.json.Value, options: @This().JsonParseOptions) anyerror!@This() {
                     var self = @This().init();
                     errdefer self.deinit(allocator);
                     try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
@@ -486,15 +488,15 @@ pub const demo = struct {
                     return self;
                 }
 
-                fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !void {
+                fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: pbz.json.Value, options: @This().JsonParseOptions) !void {
                     _ = &self;
                     _ = &allocator;
                     _ = &arena_allocator;
                     const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
                     var it = object.iterator();
                     while (it.next()) |entry| {
-                        const key = entry.key_ptr.*;
-                        const value = entry.value_ptr.*;
+                        const key = entry.key;
+                        const value = entry.value;
                         if (value == .null) {
                             if (std.mem.eql(u8, key, "leaf")) {
                                 if (self.leaf) |*old_value| old_value.deinit(allocator); self.leaf = null;
@@ -514,11 +516,11 @@ pub const demo = struct {
                     }
                 }
 
-                fn jsonInt(comptime T: type, value: std.json.Value) !T {
+                fn jsonInt(comptime T: type, value: pbz.json.Value) !T {
     return try pbz.json.intValue(T, value);
 }
 
-fn jsonFloat(comptime T: type, value: std.json.Value) !T {
+fn jsonFloat(comptime T: type, value: pbz.json.Value) !T {
     return switch (value) {
         .integer => |v| @as(T, @floatFromInt(v)),
         .float => |v| @floatCast(v),
@@ -535,25 +537,25 @@ fn jsonFloat(comptime T: type, value: std.json.Value) !T {
     };
 }
 
-fn jsonBool(value: std.json.Value) !bool {
+fn jsonBool(value: pbz.json.Value) !bool {
     return switch (value) {
         .bool => |v| v,
         else => error.TypeMismatch,
     };
 }
 
-fn jsonString(value: std.json.Value) ![]const u8 {
+fn jsonString(value: pbz.json.Value) ![]const u8 {
     return switch (value) {
         .string => |v| v,
         else => error.TypeMismatch,
     };
 }
 
-fn jsonBytes(allocator: std.mem.Allocator, value: std.json.Value) ![]const u8 {
+fn jsonBytes(allocator: std.mem.Allocator, value: pbz.json.Value) ![]const u8 {
     return try @This().jsonDecodeBase64(allocator, try @This().jsonString(value));
 }
 
-fn jsonEnum(value: std.json.Value, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32 {
+fn jsonEnum(value: pbz.json.Value, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32 {
     return switch (value) {
         .integer => |v| try @This().jsonEnumNumber(std.math.cast(i32, v) orelse return error.Overflow, numbers, closed),
         .number_string => |text| try @This().jsonEnumNumber(try std.fmt.parseInt(i32, text, 10), numbers, closed),

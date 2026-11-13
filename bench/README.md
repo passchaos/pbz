@@ -6,6 +6,18 @@ Run the current pbz baseline with:
 zig build bench -Doptimize=ReleaseFast
 ```
 
+For fast JSON parser iteration, run the focused probe:
+
+```sh
+zig build json-probe -Doptimize=ReleaseFast
+```
+
+It builds the same generated fixtures as the main benchmark, stringifies them,
+and reports `jsonParse` ns/op for Person, ScalarMix, TextBytes, PresenceMix,
+Complex, and LargeMap without recompiling the full `bench/pbz_bench.zig`
+ReleaseFast binary. It is a development tool, not part of the cross-language
+matrix.
+
 Run pbz plus every available cross-language baseline with:
 
 ```sh
