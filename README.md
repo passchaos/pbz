@@ -218,6 +218,12 @@ pbz win.
 | complex TextFormat format | 348.77 | — | — | 3366.98 (9.65x) | — | 6591.81 (18.90x) |
 | complex TextFormat parse | 2297.45 | — | — | 5846.06 (2.54x) | — | 11307.97 (4.92x) |
 
+The 2026-11-13 matrix above used prost 0.13.5 and Go protobuf v1.34.2 with Go
+1.22.2. The pinned comparison baselines are now prost 0.14.x, Go protobuf
+v1.36.12 with the Go 1.27.4 toolchain, and protobuf 36.2 for C++/upb; the final
+idle-P-core gate refreshes this table with those versions. Treat the ratios
+above as the accepted 2026-11-13 evidence until that gate completes.
+
 Every binary/TextFormat/JSON row is a pbz win against the 36.2 baselines
 except the close or core-sensitive cells below:
 
