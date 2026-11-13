@@ -8,6 +8,8 @@ const default_descriptor_env = "PBZ_CONFORMANCE_DESCRIPTOR_SET";
 /// parsers instead of the dynamic bridge. Used to measure generated JSON
 /// conformance coverage; the default remains the dynamic bridge.
 var generated_json_mode = false;
+/// Experimental audit mode for generated TextFormat parse/format.
+var generated_text_mode = false;
 
 const GeneratedCase = struct {
     name: []const u8,
@@ -54,6 +56,7 @@ pub fn main(init: std.process.Init) !void {
     }
     if (descriptor_path == null) descriptor_path = init.environ_map.get(default_descriptor_env);
     generated_json_mode = init.environ_map.get("PBZ_CONFORMANCE_GENERATED_JSON") != null;
+    generated_text_mode = init.environ_map.get("PBZ_CONFORMANCE_GENERATED_TEXT") != null;
 
     const path = descriptor_path orelse {
         printUsage(io);
@@ -154,10 +157,16 @@ fn runTyped(
             }
         },
         .text_payload => |payload| {
-            parsed_dynamic = pbz.text.parseAllocWithRegistry(allocator, registry_file, registry, descriptor, payload) catch |err| return try parseError(allocator, err);
-            const wire = parsed_dynamic.?.encodedDeterministicWithRegistry(registry_file, registry) catch |err| return try parseError(allocator, err);
-            defer allocator.free(wire);
-            parsed = Message.decodeOwned(allocator, wire) catch |err| return try parseError(allocator, err);
+            if (generated_text_mode) {
+                parsed = Message.parseTextWithOptions(allocator, payload, .{
+                    .ignore_unknown_fields = request.test_category == .json_ignore_unknown_parsing_test,
+                }) catch |err| return try parseError(allocator, err);
+            } else {
+                parsed_dynamic = pbz.text.parseAllocWithRegistry(allocator, registry_file, registry, descriptor, payload) catch |err| return try parseError(allocator, err);
+                const wire = parsed_dynamic.?.encodedDeterministicWithRegistry(registry_file, registry) catch |err| return try parseError(allocator, err);
+                defer allocator.free(wire);
+                parsed = Message.decodeOwned(allocator, wire) catch |err| return try parseError(allocator, err);
+            }
         },
         else => return try (pbz.ConformanceResponse{ .result = .{ .skipped = "unsupported input format" } }).encode(allocator),
     }
@@ -196,7 +205,9 @@ fn runTyped(
             break :blk try (pbz.ConformanceResponse{ .result = .{ .json_payload = payload } }).encode(allocator);
         },
         .text_format => blk: {
-            const payload = if (parsed_dynamic) |*dynamic|
+            const payload = if (generated_text_mode)
+                message.formatTextAlloc(allocator) catch |err| return try serializeError(allocator, err)
+            else if (parsed_dynamic) |*dynamic|
                 pbz.text.formatAllocWithRegistry(allocator, registry_file, registry, dynamic, .{
                     .print_unknown_fields = request.print_unknown_fields,
                 }) catch |err| return try serializeError(allocator, err)

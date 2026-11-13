@@ -83,6 +83,15 @@ bridges JSON/TextFormat through the registry-aware dynamic path. Set
 generated runner is large; `PBZ_CONFORMANCE_OPTIMIZE=Debug` builds it much
 faster for local iteration.
 
+`PBZ_CONFORMANCE_GENERATED_JSON=1` additionally routes JSON parse and stringify
+through generated code; it passes the full 2808/2808 suite, including Any,
+Struct/Value/ListValue, wrappers, duplicate keys, and URL-safe base64.
+`PBZ_CONFORMANCE_GENERATED_TEXT=1` audits the fast line-oriented generated
+TextFormat path: it currently passes 234/445, with groups, Any, octal literals,
+float `f` suffixes, comments, and reserved field names among the gaps. The
+default TextFormat path and the generated `parseTextConformant` entry point use
+the dynamic parser and pass the full 445.
+
 Latest accepted local results (protobuf 35.1):
 
 ```text
