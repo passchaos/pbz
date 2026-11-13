@@ -49,6 +49,19 @@ PBZ_COMPARE_CPUSET=3 bench/run_compare.sh
 Use `PBZ_COMPARE_DRY_RUN=1` with the same command to print the exact pinned
 commands without executing the benchmarks.
 
+On a heavily shared machine, a single long benchmark run can be inflated by a
+load spike in one section. Run the same binaries several times and keep the
+fastest observed row per name before summarizing:
+
+```sh
+python3 bench/merge_best.py /tmp/run1.log /tmp/run2.log /tmp/run3.log > /tmp/best.log
+python3 bench/summarize_compare.py /tmp/best.log --pivot --exclude-zero-copy
+```
+
+`merge_best.py` passes through rows that appear in only one log and is intended
+for focused A/B checks of close rows, not for overriding the documented
+same-session matrix.
+
 Summarize a full comparison log with:
 
 ```sh

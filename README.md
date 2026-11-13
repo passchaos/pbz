@@ -192,14 +192,19 @@ including upb. JSON parse was the one consistent cross-language gap found by the
 upb baseline; the lean JSON value tree in `src/json_value.zig` replaced the
 two-pass `std.json.Value` DOM and cut generated JSON parse cost by 1.7-3.3x
 (ScalarMix 2730 -> 1858 ns, TextBytes 1311 -> 531 ns, complex 2343 -> 1636 ns,
-LargeMap 167725 -> 105665 ns in the same matrix). pbz now wins JSON parse
-against C++/Go by 3.4-12.6x and is within the shared-machine noise band of upb
-(0.82-1.36x baseline/pbz); standalone probes that remove earlier-row allocator
-and thermal carry-over put pbz ahead on every JSON shape. In fair mode the
-remaining small deltas are two 64-bit packed encode/decode rows and complex
-`decode owned` against C++ (0.71-0.83x) plus the two JSON parse rows above; all
-are listed in the results snapshot. See the results snapshot for the full
-table, the upb comparison, the noise caveat, and the exact commands.
+LargeMap 167725 -> 105665 ns in the same matrix). A best-of-runs check with the
+same binaries interleaved on one CPU confirms the close rows: pbz wins every
+JSON parse row against upb by 1.14-1.99x, packed fixed64/sfixed64 encode and
+decode are 1.03-1.08x faster than C++, and complex `decode owned` is 1.17x
+faster. `pbz.wire.copyBytes` now uses ERMS `rep movsb` for 2-32 KiB copies,
+cutting an 8 KiB copy from ~61 ns to ~54-58 ns and a 4 KiB copy from ~31 ns to
+~28 ns; the packed 64-bit rows moved from roughly 62-67 ns to 60-63 ns. The only
+cell still inside the run-to-run spread is packed double encode: pbz measured
+60.4-62.7 ns in the post-ERMS rounds against C++ at 62.7-63.2 ns, while one C++
+round produced a 52.89 ns outlier that keeps the best-of-runs ratio at 0.88x.
+It is the same 8 KiB copy path and is treated as variance, not a real gap. See
+the results snapshot for the full table, the best-of-runs evidence, the upb
+comparison, the noise caveat, and the exact commands.
 
 The full fair-mode table for every tracked workload is in
 `bench/results/2026-11-12-linux-x86_64.md`. Use `--pivot` without

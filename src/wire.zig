@@ -79,17 +79,80 @@ pub inline fn encodedVarintSize(value: u64) usize {
     return (@as(usize, 64 - @clz(value)) + 6) / 7;
 }
 
+/// Cached runtime ERMS (Enhanced REP MOVSB/STOSB) detection. Zig's CPU model
+/// table does not advertise `ermsb` for some hybrid Intel models that do
+/// support it (for example Raptor Lake), so detect it from CPUID instead of
+/// relying on the compile-time feature set.
+var erms_state = std.atomic.Value(u8).init(0);
+
+inline fn ermsEnabled() bool {
+    const state = erms_state.load(.monotonic);
+    if (state != 0) return state == 2;
+    return ermsEnabledSlow();
+}
+
+fn ermsEnabledSlow() bool {
+    const supported = cpuSupportsErms();
+    erms_state.store(if (supported) 2 else 1, .monotonic);
+    return supported;
+}
+
+const CpuidLeaf = struct { eax: u32, ebx: u32, ecx: u32, edx: u32 };
+
+fn cpuid(leaf_id: u32, subid: u32) CpuidLeaf {
+    var eax: u32 = undefined;
+    var ebx: u32 = undefined;
+    var ecx: u32 = undefined;
+    var edx: u32 = undefined;
+    asm volatile ("cpuid"
+        : [_] "={eax}" (eax),
+          [_] "={ebx}" (ebx),
+          [_] "={ecx}" (ecx),
+          [_] "={edx}" (edx),
+        : [_] "{eax}" (leaf_id),
+          [_] "{ecx}" (subid),
+    );
+    return .{ .eax = eax, .ebx = ebx, .ecx = ecx, .edx = edx };
+}
+
+fn cpuSupportsErms() bool {
+    if (@import("builtin").cpu.arch != .x86_64) return false;
+    const leaf0 = cpuid(0, 0);
+    if (leaf0.eax < 7) return false;
+    const leaf7 = cpuid(7, 0);
+    return (leaf7.ebx & (1 << 9)) != 0;
+}
+
 /// Copy bytes using an explicit vectorized loop for larger payloads. Zig's
 /// compiler_rt `memcpy` is optimized for small copies and is substantially
 /// slower than glibc's AVX memcpy for multi-kilobyte protobuf payloads.
 /// Unaligned 32-byte stores split cache lines, so larger copies first advance
 /// to a 32-byte-aligned destination with a short scalar prefix.
+///
+/// On x86 CPUs with ERMS, `rep movsb` beats the vector loop for the 2-32 KiB
+/// range that packed fixed-width fields and small byte payloads use. Below
+/// 2 KiB the rep setup cost loses, and at 32 KiB and above the two are at
+/// parity, so the vector loop stays in charge there.
 pub inline fn copyBytes(dst: []u8, src: []const u8) void {
     std.debug.assert(dst.len >= src.len);
     const builtin = @import("builtin");
     if (src.len < 256 or !(builtin.cpu.arch == .x86_64 or builtin.cpu.arch == .x86 or builtin.cpu.arch == .aarch64)) {
         @memcpy(dst[0..src.len], src);
         return;
+    }
+    if (comptime builtin.cpu.arch == .x86_64) {
+        if (src.len >= 2048 and src.len < 32768 and ermsEnabled()) {
+            var d = @intFromPtr(dst.ptr);
+            var s = @intFromPtr(src.ptr);
+            var n = src.len;
+            asm volatile ("rep movsb"
+                : [d] "+{rdi}" (d),
+                  [s] "+{rsi}" (s),
+                  [n] "+{rcx}" (n)
+                :
+                : .{ .memory = true });
+            return;
+        }
     }
     const Vec = @Vector(32, u8);
     var index: usize = 0;
