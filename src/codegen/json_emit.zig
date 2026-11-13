@@ -19,7 +19,7 @@ pub fn writeJsonMethods(ctx: *const CodegenContext, message: *const schema.Messa
     try cg.indent(writer, depth);
     try writer.writeAll("pub fn jsonStringifyAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: @This().JsonStringifyOptions) ![]u8 {\n");
     try cg.indent(writer, depth + 1);
-    try writer.writeAll("var out: std.Io.Writer.Allocating = .init(allocator);\n");
+    try writer.writeAll("var out: std.Io.Writer.Allocating = try std.Io.Writer.Allocating.initCapacity(allocator, 512);\n");
     try cg.indent(writer, depth + 1);
     try writer.writeAll("errdefer out.deinit();\n");
     try cg.indent(writer, depth + 1);

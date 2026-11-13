@@ -454,7 +454,7 @@ pub const demo = struct {
                 }
 
                 pub fn jsonStringifyAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: @This().JsonStringifyOptions) ![]u8 {
-                    var out: std.Io.Writer.Allocating = .init(allocator);
+                    var out: std.Io.Writer.Allocating = try std.Io.Writer.Allocating.initCapacity(allocator, 512);
                     errdefer out.deinit();
                     try self.jsonStringifyWithOptions(allocator, &out.writer, options);
                     return try out.toOwnedSlice();
