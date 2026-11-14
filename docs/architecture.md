@@ -80,7 +80,7 @@ candidates for further splitting; the current intentional structure is:
 | File | Implementation lines | Role |
 |---|---:|---|
 | `src/codegen.zig` | ~1.8k | codegen hub: orchestration, normalization, shared emit helpers; phase modules under `src/codegen/` |
-| `src/reflect.zig` | ~4.1k | reflection facade |
+| `src/reflect.zig` | ~3.9k | reflection facade (free helpers in `src/reflect/helpers.zig`) |
 | `src/descriptor.zig` | ~3.7k | descriptor codec |
 | `src/parser.zig` | ~3.0k | `.proto` parser |
 | `src/dynamic.zig` | ~2.4k | dynamic runtime |

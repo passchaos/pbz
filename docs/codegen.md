@@ -49,6 +49,22 @@ helpers, and the conformant fallbacks. JSON/TextFormat then only use the fast
 generated paths, which cover the common cases but not every construct (for
 example `Any` JSON needs the dynamic fallback).
 
+### Lean generated code
+
+Generated output is specialized per message for hot-path performance, which
+makes it larger than descriptor-driven code. When binary size or compile time
+matters more than the full API surface, use the existing generator parameters
+instead of a separate profile:
+
+| Goal | Parameters |
+|---|---|
+| No reflection, descriptors, dynamic bridge, or conformant fallbacks | `descriptor=false` |
+| Binary-only messages (no JSON/TextFormat) | `descriptor=false,json=false,text=false` |
+| No generated-code annotations | `generated_info=false` |
+
+These switches only remove generated helpers; the wire format and the fast
+JSON/TextFormat paths stay the same.
+
 ## Generated API families
 
 Every message gets the families below. `X` is the message type.
