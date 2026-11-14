@@ -448,7 +448,6 @@ pub const generatePluginResponseFromRequest = plugin_emit.generatePluginResponse
 pub const generatePluginResponse = plugin_emit.generatePluginResponse;
 pub const generatedResponseFeatureMask = plugin_emit.generatedResponseFeatureMask;
 
-
 fn writeFileMetadata(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
     const file = ctx.file;
     try indent(writer, depth);
@@ -4023,8 +4022,8 @@ fn writeAdoptMapField(ctx: *const CodegenContext, field: *const schema.FieldDesc
     if (typed_message_value != null) {
         try indent(writer, depth + 2);
         try writer.writeAll("try entry.value_ptr.adoptOwnedInto(allocator, ");
-            try writer.writeAll(nested_allocator);
-            try writer.writeAll(");\n");
+        try writer.writeAll(nested_allocator);
+        try writer.writeAll(");\n");
         try indent(writer, depth + 2);
         try writeQuotedIdentWithSuffix(field.name, "_owned_map", writer);
         try writer.writeAll(".putAssumeCapacityNoClobber(key, entry.value_ptr.*);\n");
@@ -7807,10 +7806,6 @@ fn writeMessageDescriptorLookup(ctx: *const CodegenContext, message: *const sche
     try writer.writeAll("}\n\n");
 }
 
-
-
-
-
 fn writeExtensionMetadata(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
     const file = ctx.file;
     const count = countExtensions(file);
@@ -8844,7 +8839,6 @@ pub fn outputNameWithOptions(allocator: std.mem.Allocator, input: []const u8, su
     return try std.fmt.allocPrint(allocator, "{s}{s}", .{ stem, suffix });
 }
 
-
 pub fn extensionAppliesToMessage(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
     const extendee = field.extendee orelse return false;
     if (findExtensionExtendeeInFile(file, field)) |resolved| return resolved == message;
@@ -8974,8 +8968,6 @@ pub fn typedMapMessageValueWithContext(ctx: *const CodegenContext, field: *const
     };
 }
 
-
-
 pub fn findExtensionExtendeeInFile(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?*const schema.MessageDescriptor {
     const extendee = field.extendee orelse return null;
     if (std.mem.startsWith(u8, extendee, ".")) return findMessageByQualifiedName(file, extendee);
@@ -9026,8 +9018,6 @@ pub fn writeTypedMessageTypeWithContext(ctx: *const CodegenContext, type_name: [
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
 }
 
-
-
 pub fn splitFirst(name: []const u8) struct { []const u8, []const u8 } {
     if (std.mem.indexOfScalar(u8, name, '.')) |idx| return .{ name[0..idx], name[idx + 1 ..] };
     return .{ name, "" };
@@ -9045,16 +9035,12 @@ pub fn writeTypedRepeatedMessageTypeWithContext(ctx: *const CodegenContext, type
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
 }
 
-
-
 pub fn containingMessageForField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?*const schema.MessageDescriptor {
     for (file.messages.items) |*message| {
         if (messageContainsField(message, field)) |owner| return owner;
     }
     return null;
 }
-
-
 
 pub fn messageContainsField(message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) ?*const schema.MessageDescriptor {
     for (message.fields.items) |*candidate| {
@@ -9085,8 +9071,6 @@ pub fn messageHasValuePathTo(ctx: *const CodegenContext, from: *const schema.Mes
     }
     return false;
 }
-
-
 
 test {
     _ = @import("codegen/tests.zig");

@@ -41,7 +41,7 @@ pub fn main() !void {
     try writer.writeBool(2, true);
     try writer.writeBytes(2, &.{ 0, 1 });
     try writer.writeInt32(3, unpacked.Kind.KIND_A.toInt());
-    try writer.writeBytes(3, &.{ @intCast(unpacked.Kind.KIND_B.toInt()) });
+    try writer.writeBytes(3, &.{@intCast(unpacked.Kind.KIND_B.toInt())});
     var mixed = try unpacked.Unpacked.decodeOwnedInitialized(allocator, writer.slice());
     defer mixed.deinit(allocator);
     try std.testing.expectEqualSlices(i32, &.{ 7, 8, 9 }, mixed.values);

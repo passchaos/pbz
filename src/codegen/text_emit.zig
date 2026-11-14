@@ -147,11 +147,6 @@ pub fn writeTextParseMessageExtensions(ctx: *const CodegenContext, target: *cons
     for (scope.messages.items) |*nested| try writeTextParseMessageExtensions(ctx, target, nested, writer, depth);
 }
 
-
-
-
-
-
 pub fn writeTextParseExtensionField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const file = ctx.file;
     switch (field.kind) {
@@ -658,9 +653,6 @@ pub fn writeExtensionTextNameLiteral(file: *const schema.FileDescriptor, field: 
     try writer.writeByte('"');
 }
 
-
-
-
 pub fn writeTextParseValueExpr(file: *const schema.FileDescriptor, field: ?*const schema.FieldDescriptor, kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     switch (kind) {
         .scalar => |scalar| switch (scalar) {
@@ -702,19 +694,6 @@ pub fn writeTextParseEnumExpr(file: *const schema.FileDescriptor, enum_name: []c
     try writer.writeAll(if (cg.enum_emit.enumIsClosed(file, enum_name)) "true" else "false");
     try writer.writeAll(")");
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 pub fn writeTextMethods(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try cg.indent(writer, depth);

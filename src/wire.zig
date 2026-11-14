@@ -150,7 +150,7 @@ pub inline fn copyBytes(dst: []u8, src: []const u8) void {
             asm volatile ("rep movsb"
                 : [d] "+{rdi}" (d),
                   [s] "+{rsi}" (s),
-                  [n] "+{rcx}" (n)
+                  [n] "+{rcx}" (n),
                 :
                 : .{ .memory = true });
             return;

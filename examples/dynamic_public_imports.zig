@@ -60,7 +60,10 @@ pub fn main() !void {
     defer allocator.free(nested_leaf_bytes);
     const nested_leaf_value = try allocator.create(pbz.DynamicMessage);
     nested_leaf_value.* = pbz.DynamicMessage.init(allocator, leaf_desc);
-    errdefer { nested_leaf_value.deinit(); allocator.destroy(nested_leaf_value); }
+    errdefer {
+        nested_leaf_value.deinit();
+        allocator.destroy(nested_leaf_value);
+    }
     try nested_leaf_value.decodeWithRegistry(&leaf, &registry, nested_leaf_bytes);
     var mid_msg = pbz.DynamicMessage.init(allocator, mid_desc);
     defer mid_msg.deinit();
@@ -70,14 +73,20 @@ pub fn main() !void {
     defer allocator.free(direct_leaf_bytes);
     const direct_leaf_value = try allocator.create(pbz.DynamicMessage);
     direct_leaf_value.* = pbz.DynamicMessage.init(allocator, leaf_desc);
-    errdefer { direct_leaf_value.deinit(); allocator.destroy(direct_leaf_value); }
+    errdefer {
+        direct_leaf_value.deinit();
+        allocator.destroy(direct_leaf_value);
+    }
     try direct_leaf_value.decodeWithRegistry(&leaf, &registry, direct_leaf_bytes);
 
     const mid_bytes = try mid_msg.encodedWithRegistry(&mid, &registry);
     defer allocator.free(mid_bytes);
     const mid_value = try allocator.create(pbz.DynamicMessage);
     mid_value.* = pbz.DynamicMessage.init(allocator, mid_desc);
-    errdefer { mid_value.deinit(); allocator.destroy(mid_value); }
+    errdefer {
+        mid_value.deinit();
+        allocator.destroy(mid_value);
+    }
     try mid_value.decodeWithRegistry(&mid, &registry, mid_bytes);
 
     var app_msg = pbz.DynamicMessage.init(allocator, app_desc);

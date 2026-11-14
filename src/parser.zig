@@ -1508,14 +1508,14 @@ pub const Parser = struct {
     }
 
     fn validateNamingStyle(self: *Parser) ParseError!void {
-    if (self.file.syntax != .editions) return;
-    const file_style = self.file.features.enforce_naming_style;
-    if (file_style != .style_legacy) try validatePackageNaming(self.file.package);
-    for (self.file.messages.items) |*message| try validateMessageNaming(message, file_style);
-    for (self.file.enums.items) |*enumeration| try validateEnumNaming(enumeration, file_style);
-    for (self.file.services.items) |*service| try validateServiceNaming(service, file_style);
-    for (self.file.extensions.items) |*field| try validateFieldNaming(field, file_style, null);
-}
+        if (self.file.syntax != .editions) return;
+        const file_style = self.file.features.enforce_naming_style;
+        if (file_style != .style_legacy) try validatePackageNaming(self.file.package);
+        for (self.file.messages.items) |*message| try validateMessageNaming(message, file_style);
+        for (self.file.enums.items) |*enumeration| try validateEnumNaming(enumeration, file_style);
+        for (self.file.services.items) |*service| try validateServiceNaming(service, file_style);
+        for (self.file.extensions.items) |*field| try validateFieldNaming(field, file_style, null);
+    }
 
     fn validateProtoLimits(self: *Parser) ParseError!void {
         if (self.file.syntax != .editions) return;
@@ -1533,224 +1533,224 @@ pub const Parser = struct {
         }
     }
 
-const FeatureTarget = enum {
-    file,
-    extension_range,
-    message,
-    field,
-    oneof,
-    enumeration,
-    enum_entry,
-    service,
-    method,
-};
+    const FeatureTarget = enum {
+        file,
+        extension_range,
+        message,
+        field,
+        oneof,
+        enumeration,
+        enum_entry,
+        service,
+        method,
+    };
 
-/// Feature targets from descriptor.proto; protoc rejects a feature set on an
-/// entity type it does not target (for example file-level enforce_proto_limits).
-fn validateFeatureOptionTarget(option: schema.FieldOption, target: FeatureTarget) ParseError!void {
-    const leaf = optionLeaf(option.name);
-    const allowed = if (std.mem.eql(u8, leaf, "field_presence") or
-        std.mem.eql(u8, leaf, "repeated_field_encoding") or
-        std.mem.eql(u8, leaf, "utf8_validation") or
-        std.mem.eql(u8, leaf, "message_encoding"))
-        target == .file or target == .field
-    else if (std.mem.eql(u8, leaf, "enum_type"))
-        target == .file or target == .enumeration
-    else if (std.mem.eql(u8, leaf, "json_format"))
-        target == .file or target == .message or target == .enumeration
-    else if (std.mem.eql(u8, leaf, "enforce_naming_style"))
-        true
-    else if (std.mem.eql(u8, leaf, "default_symbol_visibility"))
-        target == .file
-    else if (std.mem.eql(u8, leaf, "enforce_proto_limits"))
-        target == .enumeration or target == .message or target == .field or target == .oneof
-    else
-        false;
-    if (!allowed) return error.InvalidFieldType;
-}
-
-fn effectiveNamingStyle(features: ?schema.FeatureSet, inherited: schema.FeatureSet.EnforceNamingStyle) schema.FeatureSet.EnforceNamingStyle {
-    return if (features) |value| value.enforce_naming_style else inherited;
-}
-
-fn validatePackageNaming(package: []const u8) ParseError!void {
-    if (package.len == 0) return;
-    var it = std.mem.splitScalar(u8, package, '.');
-    while (it.next()) |component| {
-        if (!isLowerSnakeCaseName(component)) return error.InvalidFieldType;
+    /// Feature targets from descriptor.proto; protoc rejects a feature set on an
+    /// entity type it does not target (for example file-level enforce_proto_limits).
+    fn validateFeatureOptionTarget(option: schema.FieldOption, target: FeatureTarget) ParseError!void {
+        const leaf = optionLeaf(option.name);
+        const allowed = if (std.mem.eql(u8, leaf, "field_presence") or
+            std.mem.eql(u8, leaf, "repeated_field_encoding") or
+            std.mem.eql(u8, leaf, "utf8_validation") or
+            std.mem.eql(u8, leaf, "message_encoding"))
+            target == .file or target == .field
+        else if (std.mem.eql(u8, leaf, "enum_type"))
+            target == .file or target == .enumeration
+        else if (std.mem.eql(u8, leaf, "json_format"))
+            target == .file or target == .message or target == .enumeration
+        else if (std.mem.eql(u8, leaf, "enforce_naming_style"))
+            true
+        else if (std.mem.eql(u8, leaf, "default_symbol_visibility"))
+            target == .file
+        else if (std.mem.eql(u8, leaf, "enforce_proto_limits"))
+            target == .enumeration or target == .message or target == .field or target == .oneof
+        else
+            false;
+        if (!allowed) return error.InvalidFieldType;
     }
-}
 
-fn validateMessageNaming(message: *const schema.MessageDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
-    const style = effectiveNamingStyle(message.features, inherited);
-    if (style != .style_legacy and !isTitleCaseName(message.name)) return error.InvalidFieldType;
-    for (message.fields.items) |*field| try validateFieldNaming(field, fieldInheritedNamingStyle(message, field, style), message);
-    for (message.oneofs.items) |*oneof| {
-        const oneof_style = effectiveNamingStyle(oneof.features, style);
-        if (oneof_style != .style_legacy and !isLowerSnakeCaseName(oneof.name)) return error.InvalidFieldType;
-        if (oneof_style == .style2026 and !isValidFieldNonCollisionName(message, oneof.name)) return error.InvalidFieldType;
+    fn effectiveNamingStyle(features: ?schema.FeatureSet, inherited: schema.FeatureSet.EnforceNamingStyle) schema.FeatureSet.EnforceNamingStyle {
+        return if (features) |value| value.enforce_naming_style else inherited;
     }
-    for (message.messages.items) |*nested| try validateMessageNaming(nested, style);
-    for (message.enums.items) |*enumeration| try validateEnumNaming(enumeration, style);
-    for (message.extensions.items) |*field| try validateFieldNaming(field, style, message);
-}
 
-/// Oneof-scoped features are inherited by their member fields in protobuf's
-/// feature resolution, so a oneof-level STYLE_LEGACY also relaxes field names.
-fn fieldInheritedNamingStyle(message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, message_style: schema.FeatureSet.EnforceNamingStyle) schema.FeatureSet.EnforceNamingStyle {
-    const oneof_name = field.oneof_name orelse return message_style;
-    for (message.oneofs.items) |*oneof| {
-        if (std.mem.eql(u8, oneof.name, oneof_name)) return effectiveNamingStyle(oneof.features, message_style);
-    }
-    return message_style;
-}
-
-fn validateFieldNaming(field: *const schema.FieldDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle, message: ?*const schema.MessageDescriptor) ParseError!void {
-    const style = effectiveNamingStyle(field.features, inherited);
-    if (style != .style_legacy and !isLowerSnakeCaseName(field.name)) return error.InvalidFieldType;
-    if (style == .style2026) {
-        if (message) |containing| {
-            if (!isValidFieldNonCollisionName(containing, field.name)) return error.InvalidFieldType;
+    fn validatePackageNaming(package: []const u8) ParseError!void {
+        if (package.len == 0) return;
+        var it = std.mem.splitScalar(u8, package, '.');
+        while (it.next()) |component| {
+            if (!isLowerSnakeCaseName(component)) return error.InvalidFieldType;
         }
     }
-}
 
-/// STYLE2026 rejects generated-code collisions: a field or oneof named
-/// `has_x`/`get_x`/`set_x`/`clear_x`/`x_value` when `x` is also a field or
-/// oneof of the same message (matching DescriptorBuilder::ValidateNamingStyle).
-fn isValidFieldNonCollisionName(message: *const schema.MessageDescriptor, name: []const u8) bool {
-    const prefixes = [_][]const u8{ "has_", "get_", "set_", "clear_" };
-    for (prefixes) |prefix| {
-        if (std.mem.startsWith(u8, name, prefix) and messageHasFieldOrOneofNamed(message, name[prefix.len..])) return false;
-    }
-    const suffixes = [_][]const u8{"_value"};
-    for (suffixes) |suffix| {
-        if (std.mem.endsWith(u8, name, suffix) and messageHasFieldOrOneofNamed(message, name[0 .. name.len - suffix.len])) return false;
-    }
-    return true;
-}
-
-fn messageHasFieldOrOneofNamed(message: *const schema.MessageDescriptor, name: []const u8) bool {
-    for (message.fields.items) |field| {
-        if (std.mem.eql(u8, field.name, name)) return true;
-    }
-    for (message.oneofs.items) |oneof| {
-        if (std.mem.eql(u8, oneof.name, name)) return true;
-    }
-    return false;
-}
-
-const proto_limits_2026_fields_per_message: usize = 1500;
-const proto_limits_2026_oneofs_per_message: usize = 1000;
-const proto_limits_2026_fields_per_oneof: usize = 1200;
-const proto_limits_2026_values_per_enum: usize = 1700;
-
-/// Edition-2026 PROTO_LIMITS2026 validation, matching protoc 36.x
-/// DescriptorBuilder::ValidateProtoLimits. The effective feature inherits from
-/// the enclosing message/file, so a message-level opt-out covers its children.
-fn validateMessageProtoLimits(message: *const schema.MessageDescriptor, inherited: schema.FeatureSet.EnforceProtoLimits) ParseError!void {
-    const limits = effectiveProtoLimits(message.features, inherited);
-    if (limits != .legacy_no_explicit_limits) {
-        if (message.fields.items.len > proto_limits_2026_fields_per_message) return error.InvalidFieldType;
-        var real_oneofs: usize = 0;
+    fn validateMessageNaming(message: *const schema.MessageDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
+        const style = effectiveNamingStyle(message.features, inherited);
+        if (style != .style_legacy and !isTitleCaseName(message.name)) return error.InvalidFieldType;
+        for (message.fields.items) |*field| try validateFieldNaming(field, fieldInheritedNamingStyle(message, field, style), message);
         for (message.oneofs.items) |*oneof| {
-            if (!message.oneofIsSynthetic(oneof)) real_oneofs += 1;
+            const oneof_style = effectiveNamingStyle(oneof.features, style);
+            if (oneof_style != .style_legacy and !isLowerSnakeCaseName(oneof.name)) return error.InvalidFieldType;
+            if (oneof_style == .style2026 and !isValidFieldNonCollisionName(message, oneof.name)) return error.InvalidFieldType;
         }
-        if (real_oneofs > proto_limits_2026_oneofs_per_message) return error.InvalidFieldType;
+        for (message.messages.items) |*nested| try validateMessageNaming(nested, style);
+        for (message.enums.items) |*enumeration| try validateEnumNaming(enumeration, style);
+        for (message.extensions.items) |*field| try validateFieldNaming(field, style, message);
     }
-    for (message.oneofs.items) |*oneof| {
-        const oneof_limits = effectiveProtoLimits(oneof.features, limits);
-        if (oneof_limits == .legacy_no_explicit_limits) continue;
-        var field_count: usize = 0;
-        for (message.fields.items) |*field| {
-            if (field.oneof_name) |name| {
-                if (std.mem.eql(u8, name, oneof.name)) field_count += 1;
+
+    /// Oneof-scoped features are inherited by their member fields in protobuf's
+    /// feature resolution, so a oneof-level STYLE_LEGACY also relaxes field names.
+    fn fieldInheritedNamingStyle(message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, message_style: schema.FeatureSet.EnforceNamingStyle) schema.FeatureSet.EnforceNamingStyle {
+        const oneof_name = field.oneof_name orelse return message_style;
+        for (message.oneofs.items) |*oneof| {
+            if (std.mem.eql(u8, oneof.name, oneof_name)) return effectiveNamingStyle(oneof.features, message_style);
+        }
+        return message_style;
+    }
+
+    fn validateFieldNaming(field: *const schema.FieldDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle, message: ?*const schema.MessageDescriptor) ParseError!void {
+        const style = effectiveNamingStyle(field.features, inherited);
+        if (style != .style_legacy and !isLowerSnakeCaseName(field.name)) return error.InvalidFieldType;
+        if (style == .style2026) {
+            if (message) |containing| {
+                if (!isValidFieldNonCollisionName(containing, field.name)) return error.InvalidFieldType;
             }
         }
-        if (field_count > proto_limits_2026_fields_per_oneof) return error.InvalidFieldType;
     }
-    for (message.messages.items) |*nested| try validateMessageProtoLimits(nested, limits);
-    for (message.enums.items) |*enumeration| try validateEnumProtoLimits(enumeration, limits);
-}
 
-fn validateEnumProtoLimits(enumeration: *const schema.EnumDescriptor, inherited: schema.FeatureSet.EnforceProtoLimits) ParseError!void {
-    const limits = effectiveProtoLimits(enumeration.features, inherited);
-    if (limits != .legacy_no_explicit_limits and enumeration.values.items.len > proto_limits_2026_values_per_enum) return error.InvalidFieldType;
-}
-
-fn effectiveProtoLimits(features: ?schema.FeatureSet, inherited: schema.FeatureSet.EnforceProtoLimits) schema.FeatureSet.EnforceProtoLimits {
-    return if (features) |value| value.enforce_proto_limits else inherited;
-}
-
-/// STRICT visibility forbids exporting nested declarations; top-level `export`
-/// remains valid (descriptor.proto's VisibilityFeature comment).
-fn validateMessageVisibility(message: *const schema.MessageDescriptor, nested: bool, strict: bool) ParseError!void {
-    if (strict and nested and message.visibility == .exported) return error.InvalidFieldType;
-    for (message.messages.items) |*child| try validateMessageVisibility(child, true, strict);
-    for (message.enums.items) |*enumeration| {
-        if (strict and enumeration.visibility == .exported) return error.InvalidFieldType;
-    }
-}
-
-fn validateEnumNaming(enumeration: *const schema.EnumDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
-    const style = effectiveNamingStyle(enumeration.features, inherited);
-    if (style != .style_legacy and !isTitleCaseName(enumeration.name)) return error.InvalidFieldType;
-    for (enumeration.values.items) |*value| {
-        const value_style = effectiveNamingStyle(value.features, style);
-        if (value_style != .style_legacy and !isUpperSnakeCaseName(value.name)) return error.InvalidFieldType;
-    }
-}
-
-fn validateServiceNaming(service: *const schema.ServiceDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
-    const style = effectiveNamingStyle(service.features, inherited);
-    if (style != .style_legacy and !isTitleCaseName(service.name)) return error.InvalidFieldType;
-    for (service.methods.items) |*method| {
-        const method_style = effectiveNamingStyle(method.features, style);
-        if (method_style != .style_legacy and !isTitleCaseName(method.name)) return error.InvalidFieldType;
-    }
-}
-
-fn isTitleCaseName(name: []const u8) bool {
-    if (name.len == 0 or !std.ascii.isUpper(name[0])) return false;
-    for (name[1..]) |c| {
-        if (!std.ascii.isAlphanumeric(c)) return false;
-    }
-    return true;
-}
-
-fn isLowerSnakeCaseName(name: []const u8) bool {
-    if (name.len == 0 or !std.ascii.isLower(name[0])) return false;
-    var after_underscore = false;
-    for (name[1..], 1..) |c, index| {
-        if (c == '_') {
-            if (after_underscore or index + 1 >= name.len) return false;
-            after_underscore = true;
-            continue;
+    /// STYLE2026 rejects generated-code collisions: a field or oneof named
+    /// `has_x`/`get_x`/`set_x`/`clear_x`/`x_value` when `x` is also a field or
+    /// oneof of the same message (matching DescriptorBuilder::ValidateNamingStyle).
+    fn isValidFieldNonCollisionName(message: *const schema.MessageDescriptor, name: []const u8) bool {
+        const prefixes = [_][]const u8{ "has_", "get_", "set_", "clear_" };
+        for (prefixes) |prefix| {
+            if (std.mem.startsWith(u8, name, prefix) and messageHasFieldOrOneofNamed(message, name[prefix.len..])) return false;
         }
-        if (!(std.ascii.isLower(c) or std.ascii.isDigit(c))) return false;
-        if (after_underscore and !std.ascii.isLower(c)) return false;
-        after_underscore = false;
-    }
-    return true;
-}
-
-fn isUpperSnakeCaseName(name: []const u8) bool {
-    if (name.len == 0 or !std.ascii.isUpper(name[0])) return false;
-    var after_underscore = false;
-    for (name[1..], 1..) |c, index| {
-        if (c == '_') {
-            if (after_underscore or index + 1 >= name.len) return false;
-            after_underscore = true;
-            continue;
+        const suffixes = [_][]const u8{"_value"};
+        for (suffixes) |suffix| {
+            if (std.mem.endsWith(u8, name, suffix) and messageHasFieldOrOneofNamed(message, name[0 .. name.len - suffix.len])) return false;
         }
-        if (!(std.ascii.isUpper(c) or std.ascii.isDigit(c))) return false;
-        if (after_underscore and !std.ascii.isUpper(c)) return false;
-        after_underscore = false;
+        return true;
     }
-    return true;
-}
 
-fn validateMessageFieldOptionApplicabilities(self: *Parser, message: *schema.MessageDescriptor) ParseError!void {
+    fn messageHasFieldOrOneofNamed(message: *const schema.MessageDescriptor, name: []const u8) bool {
+        for (message.fields.items) |field| {
+            if (std.mem.eql(u8, field.name, name)) return true;
+        }
+        for (message.oneofs.items) |oneof| {
+            if (std.mem.eql(u8, oneof.name, name)) return true;
+        }
+        return false;
+    }
+
+    const proto_limits_2026_fields_per_message: usize = 1500;
+    const proto_limits_2026_oneofs_per_message: usize = 1000;
+    const proto_limits_2026_fields_per_oneof: usize = 1200;
+    const proto_limits_2026_values_per_enum: usize = 1700;
+
+    /// Edition-2026 PROTO_LIMITS2026 validation, matching protoc 36.x
+    /// DescriptorBuilder::ValidateProtoLimits. The effective feature inherits from
+    /// the enclosing message/file, so a message-level opt-out covers its children.
+    fn validateMessageProtoLimits(message: *const schema.MessageDescriptor, inherited: schema.FeatureSet.EnforceProtoLimits) ParseError!void {
+        const limits = effectiveProtoLimits(message.features, inherited);
+        if (limits != .legacy_no_explicit_limits) {
+            if (message.fields.items.len > proto_limits_2026_fields_per_message) return error.InvalidFieldType;
+            var real_oneofs: usize = 0;
+            for (message.oneofs.items) |*oneof| {
+                if (!message.oneofIsSynthetic(oneof)) real_oneofs += 1;
+            }
+            if (real_oneofs > proto_limits_2026_oneofs_per_message) return error.InvalidFieldType;
+        }
+        for (message.oneofs.items) |*oneof| {
+            const oneof_limits = effectiveProtoLimits(oneof.features, limits);
+            if (oneof_limits == .legacy_no_explicit_limits) continue;
+            var field_count: usize = 0;
+            for (message.fields.items) |*field| {
+                if (field.oneof_name) |name| {
+                    if (std.mem.eql(u8, name, oneof.name)) field_count += 1;
+                }
+            }
+            if (field_count > proto_limits_2026_fields_per_oneof) return error.InvalidFieldType;
+        }
+        for (message.messages.items) |*nested| try validateMessageProtoLimits(nested, limits);
+        for (message.enums.items) |*enumeration| try validateEnumProtoLimits(enumeration, limits);
+    }
+
+    fn validateEnumProtoLimits(enumeration: *const schema.EnumDescriptor, inherited: schema.FeatureSet.EnforceProtoLimits) ParseError!void {
+        const limits = effectiveProtoLimits(enumeration.features, inherited);
+        if (limits != .legacy_no_explicit_limits and enumeration.values.items.len > proto_limits_2026_values_per_enum) return error.InvalidFieldType;
+    }
+
+    fn effectiveProtoLimits(features: ?schema.FeatureSet, inherited: schema.FeatureSet.EnforceProtoLimits) schema.FeatureSet.EnforceProtoLimits {
+        return if (features) |value| value.enforce_proto_limits else inherited;
+    }
+
+    /// STRICT visibility forbids exporting nested declarations; top-level `export`
+    /// remains valid (descriptor.proto's VisibilityFeature comment).
+    fn validateMessageVisibility(message: *const schema.MessageDescriptor, nested: bool, strict: bool) ParseError!void {
+        if (strict and nested and message.visibility == .exported) return error.InvalidFieldType;
+        for (message.messages.items) |*child| try validateMessageVisibility(child, true, strict);
+        for (message.enums.items) |*enumeration| {
+            if (strict and enumeration.visibility == .exported) return error.InvalidFieldType;
+        }
+    }
+
+    fn validateEnumNaming(enumeration: *const schema.EnumDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
+        const style = effectiveNamingStyle(enumeration.features, inherited);
+        if (style != .style_legacy and !isTitleCaseName(enumeration.name)) return error.InvalidFieldType;
+        for (enumeration.values.items) |*value| {
+            const value_style = effectiveNamingStyle(value.features, style);
+            if (value_style != .style_legacy and !isUpperSnakeCaseName(value.name)) return error.InvalidFieldType;
+        }
+    }
+
+    fn validateServiceNaming(service: *const schema.ServiceDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
+        const style = effectiveNamingStyle(service.features, inherited);
+        if (style != .style_legacy and !isTitleCaseName(service.name)) return error.InvalidFieldType;
+        for (service.methods.items) |*method| {
+            const method_style = effectiveNamingStyle(method.features, style);
+            if (method_style != .style_legacy and !isTitleCaseName(method.name)) return error.InvalidFieldType;
+        }
+    }
+
+    fn isTitleCaseName(name: []const u8) bool {
+        if (name.len == 0 or !std.ascii.isUpper(name[0])) return false;
+        for (name[1..]) |c| {
+            if (!std.ascii.isAlphanumeric(c)) return false;
+        }
+        return true;
+    }
+
+    fn isLowerSnakeCaseName(name: []const u8) bool {
+        if (name.len == 0 or !std.ascii.isLower(name[0])) return false;
+        var after_underscore = false;
+        for (name[1..], 1..) |c, index| {
+            if (c == '_') {
+                if (after_underscore or index + 1 >= name.len) return false;
+                after_underscore = true;
+                continue;
+            }
+            if (!(std.ascii.isLower(c) or std.ascii.isDigit(c))) return false;
+            if (after_underscore and !std.ascii.isLower(c)) return false;
+            after_underscore = false;
+        }
+        return true;
+    }
+
+    fn isUpperSnakeCaseName(name: []const u8) bool {
+        if (name.len == 0 or !std.ascii.isUpper(name[0])) return false;
+        var after_underscore = false;
+        for (name[1..], 1..) |c, index| {
+            if (c == '_') {
+                if (after_underscore or index + 1 >= name.len) return false;
+                after_underscore = true;
+                continue;
+            }
+            if (!(std.ascii.isUpper(c) or std.ascii.isDigit(c))) return false;
+            if (after_underscore and !std.ascii.isUpper(c)) return false;
+            after_underscore = false;
+        }
+        return true;
+    }
+
+    fn validateMessageFieldOptionApplicabilities(self: *Parser, message: *schema.MessageDescriptor) ParseError!void {
         for (message.fields.items) |*field| try validateFieldOptionApplicability(field);
         for (message.extensions.items) |*field| try validateFieldOptionApplicability(field);
         for (message.messages.items) |*nested| try self.validateMessageFieldOptionApplicabilities(nested);

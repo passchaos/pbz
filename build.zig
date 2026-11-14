@@ -402,10 +402,19 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(examples_step);
     test_step.dependOn(&run_summary_self_test.step);
 
+    const fmt_check = b.addSystemCommand(&.{ b.graph.zig_exe, "fmt", "--check", "build.zig", "src", "bench", "tools" });
+    fmt_check.setCwd(b.path("."));
+    for (example_names) |example_name| {
+        fmt_check.addArg(b.fmt("examples/{s}.zig", .{example_name}));
+    }
+    const fmt_check_step = b.step("fmt-check", "Verify hand-written sources are zig fmt clean");
+    fmt_check_step.dependOn(&fmt_check.step);
+
     const check_step = b.step("check", "Run non-benchmark validation gates");
     check_step.dependOn(test_step);
     check_step.dependOn(generated_examples_check_step);
     check_step.dependOn(conformance_smoke_step);
     check_step.dependOn(cli_smoke_step);
     check_step.dependOn(fuzz_smoke_step);
+    check_step.dependOn(fmt_check_step);
 }

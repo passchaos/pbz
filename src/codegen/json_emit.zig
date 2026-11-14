@@ -259,7 +259,6 @@ pub fn writeWktJsonHelpers(ctx: *const CodegenContext, writer: *std.Io.Writer) E
     try writer.writeAll("fn _pbzJsonStringifyWktListValue(value: ");
     try cg.writeFileScopeMessageReference(ctx, list_type, writer);
     try writer.writeAll(", writer: *std.Io.Writer) anyerror!void {\n    try writer.writeAll(\"[\");\n    for (value.values, 0..) |item, i| {\n        if (i != 0) try writer.writeAll(\",\");\n        try _pbzJsonStringifyWktValue(item, writer);\n    }\n    try writer.writeAll(\"]\");\n}\n\n");
-
 }
 
 pub fn writeFileRegistryHelper(ctx: *const CodegenContext, writer: *std.Io.Writer) Error!void {
@@ -914,8 +913,8 @@ pub fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const sche
             try writer.writeAll(") = .empty;\n");
             try cg.indent(writer, depth + 1);
             try writer.writeAll("errdefer list.deinit(allocator);\n");
-        try cg.indent(writer, depth + 1);
-        try writer.writeAll("try list.ensureTotalCapacity(allocator, array.items.len);\n");
+            try cg.indent(writer, depth + 1);
+            try writer.writeAll("try list.ensureTotalCapacity(allocator, array.items.len);\n");
             try cg.indent(writer, depth + 1);
             try writer.writeAll("for (array.items) |item| try list.append(allocator, ");
             try writeWktJsonParseExpr(wkt_kind, "item", "arena_allocator", writer);
@@ -1492,9 +1491,6 @@ pub fn writeJsonParseMapValueExpr(ctx: *const CodegenContext, field: *const sche
         else => try writeJsonParseValueExpr(file, kind, value_expr, arena_expr, writer),
     }
 }
-
-
-
 
 pub fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
     try cg.indent(writer, depth);
