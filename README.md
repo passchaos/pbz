@@ -66,6 +66,12 @@ For detailed feature coverage, see:
 - [`bench/COVERAGE.md`](bench/COVERAGE.md)
 - [`examples/README.md`](examples/README.md)
 
+Design documentation:
+
+- [`docs/architecture.md`](docs/architecture.md) — module layering and data flow
+- [`docs/ownership.md`](docs/ownership.md) — borrowed/owned/arena decode and lifetime rules
+- [`docs/codegen.md`](docs/codegen.md) — generated API surface and generator parameters
+
 ### Upstream conformance
 
 `pbz-conformance` implements the upstream protobuf conformance subprocess
@@ -412,6 +418,7 @@ zig build test
 zig build examples
 zig build build-codegen-smoke
 zig build check-generated-examples
+zig build fmt-check
 zig build conformance-smoke
 zig build cli-smoke
 zig build fuzz-smoke
