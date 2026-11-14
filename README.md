@@ -177,28 +177,29 @@ semantically identical to a baseline that materializes/copies the payload. Use
 slice/view rows.
 
 Latest accepted cross-language matrix (`bench/results/2026-11-12-linux-x86_64.md`,
-"2026-11-14 final 36.2 gate" section): protobuf 36.2 C++/upb, prost 0.14.6,
-quick-protobuf 0.8.1, Go protobuf v1.36.12 with the Go 1.27.4 toolchain, three
-full-matrix rounds pinned to CPU 3 and merged per row. Fair mode
-(`--exclude-zero-copy`) reports 971 of 977 compared cells as pbz wins. The
-residual rows are:
+"2026-11-14 post-optimization gate" section): protobuf 36.2 C++/upb, prost
+0.14.6, quick-protobuf 0.8.1, Go protobuf v1.36.12 with the Go 1.27.4
+toolchain, three full-matrix rounds pinned to CPU 3 and merged per row. Both
+the mixed matrix and the fair matrix (`--exclude-zero-copy`) report "All
+parsed cross-language rows are pbz wins." The rows that were still behind
+before the final JSON optimizations now lead:
 
 | workload | pbz ns/op | baseline ns/op | ratio |
 |---|---:|---:|---:|
-| ScalarMix JSON parse | 1336.28 | upb 1244.50 | 0.93x |
-| TextBytes JSON stringify | 340.61 | upb 336.87 | 0.99x |
-| TextBytes JSON parse | 531.35 | upb 502.95 | 0.95x |
-| packed fixed64 encode | 59.53 | C++ 57.86 | 0.97x |
-| packed sfixed64 encode | 61.47 | C++ 59.26 | 0.96x |
-| packed sfixed64 decode | 63.69 | C++ 62.65 | 0.98x |
+| ScalarMix JSON parse | 880.98 | upb 1250.48 | 1.42x |
+| TextBytes JSON stringify | 284.75 | upb 342.09 | 1.20x |
+| TextBytes JSON parse | 497.62 | upb 522.55 | 1.05x |
+| packed fixed64 encode | 60.30 | C++ 62.91 | 1.04x |
+| packed sfixed64 encode | 59.79 | C++ 62.57 | 1.05x |
+| packed sfixed64 decode | 62.90 | C++ 65.28 | 1.04x |
 
-The three JSON rows are the active optimization target; the packed rows are
-inside the 2-4% run-to-run spread but remain listed until a repeat gate
-confirms them. The full fair-mode pivot is in the results snapshot. Generated
-JSON parse uses the lean `src/json_value.zig` tree, rejects duplicate
-spellings, oneof members, and extension keys, emits canonical WKT JSON, and
-the opt-in `PBZ_CONFORMANCE_GENERATED_JSON=1` audit passes 2817/2817 plus
-445/445 TextFormat.
+Those wins came from length-guarded generated JSON key comparisons, fused
+integer token scanning with an FNV-1a duplicate-key table, and pre-sizing the
+generated JSON stringify buffer. The full fair-mode pivot is in the results
+snapshot. Generated JSON parse uses the lean `src/json_value.zig` tree, rejects
+duplicate spellings, oneof members, and extension keys, emits canonical WKT
+JSON, and the opt-in `PBZ_CONFORMANCE_GENERATED_JSON=1` audit passes 2817/2817
+plus 445/445 TextFormat.
 
 ## Basic usage
 
