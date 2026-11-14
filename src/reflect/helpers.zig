@@ -247,3 +247,7 @@ pub fn exerciseReflectionCleanup(allocator: std.mem.Allocator, registry: *const 
     try std.testing.expectEqual(@as(usize, 1), try refl.repeatedLen(&msg, "tags"));
     try std.testing.expectEqual(@as(usize, 1), msg.get("counts").?.values.items.len);
 }
+
+test {
+    _ = @import("helpers_tests.zig");
+}
