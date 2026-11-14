@@ -81,15 +81,21 @@ candidates for further splitting; the current intentional structure is:
 |---|---:|---|
 | `src/codegen.zig` | ~9.1k | codegen orchestration plus binary/JSON/Text emission; split into `src/codegen/*.zig` by output family |
 | `src/reflect.zig` | ~4.1k | reflection facade |
-| `src/descriptor.zig` | ~3.9k | descriptor codec (plus ~4.4k tests) |
-| `src/parser.zig` | ~3.1k | `.proto` parser |
+| `src/descriptor.zig` | ~3.7k | descriptor codec |
+| `src/parser.zig` | ~3.0k | `.proto` parser |
 | `src/dynamic.zig` | ~2.4k | dynamic runtime |
-| `src/wire.zig` | ~2.1k | wire primitives |
 | `src/schema.zig` | ~2.2k | schema model |
+| `src/wire.zig` | ~2.1k | wire primitives |
 | `src/wkt.zig` | ~2.0k | well-known types |
-| `src/json.zig` | ~1.8k | dynamic JSON |
+| `src/json.zig` | ~1.7k | dynamic JSON |
 | `src/registry.zig` | ~1.7k | registry |
 | `src/text.zig` | ~1.4k | dynamic TextFormat |
+
+Tests for `descriptor`, `dynamic`, `parser`, `json`, `wire`, and `registry` live
+in sibling `<module>_tests.zig` files. Each module ends with
+`test { _ = @import("<module>_tests.zig"); }`, so `zig build test` discovers
+them while library builds ignore the import. Private declarations that the
+tests need are grouped under a `test_helpers` namespace in the module.
 
 ## Validation map
 
